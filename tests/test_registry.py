@@ -59,3 +59,41 @@ class TestToolRegistry:
         tools = [ToolDirective("snowflake_mcp.execute_query", "query")]
         available = reg.resolve_available(tools)
         assert len(available) == 1
+
+    def test_github_filtered_when_unavailable(self):
+        reg = ToolRegistry()
+        reg.update_capabilities({
+            "dbt_available": True,
+            "dbt_mcp_available": True,
+            "github_available": False,
+        })
+        tools = [
+            ToolDirective("dbt_mcp.compile", "compile model"),
+            ToolDirective("github_cli.search_code", "search code"),
+            ToolDirective("github_cli.read_file", "read file"),
+            ToolDirective("snowflake_mcp.execute_query", "run query"),
+        ]
+        available = reg.resolve_available(tools)
+        names = [t.name for t in available]
+        assert "github_cli.search_code" not in names
+        assert "github_cli.read_file" not in names
+        assert "dbt_mcp.compile" in names
+        assert "snowflake_mcp.execute_query" in names
+
+    def test_snowflake_only_mode(self):
+        """When both dbt and github are unavailable, only snowflake tools remain."""
+        reg = ToolRegistry()
+        reg.update_capabilities({
+            "dbt_available": False,
+            "dbt_mcp_available": False,
+            "github_available": False,
+        })
+        tools = [
+            ToolDirective("dbt_mcp.compile", "compile"),
+            ToolDirective("github_cli.read_file", "read"),
+            ToolDirective("snowflake_mcp.execute_query", "query"),
+            ToolDirective("snowflake_mcp.describe_table", "describe"),
+        ]
+        available = reg.resolve_available(tools)
+        names = [t.name for t in available]
+        assert names == ["snowflake_mcp.execute_query", "snowflake_mcp.describe_table"]

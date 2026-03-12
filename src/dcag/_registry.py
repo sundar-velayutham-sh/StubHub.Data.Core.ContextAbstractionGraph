@@ -19,9 +19,9 @@ DEFAULT_TOOL_REQUIREMENTS: dict[str, list[str]] = {
     "snowflake_mcp.execute_query": [],
     "snowflake_mcp.describe_table": [],
     "snowflake_mcp.list_tables": [],
-    "github_cli.read_file": [],
-    "github_cli.search_code": [],
-    "github_cli.create_pr": [],
+    "github_cli.read_file": ["github_available"],
+    "github_cli.search_code": ["github_available"],
+    "github_cli.create_pr": ["github_available"],
 }
 
 
