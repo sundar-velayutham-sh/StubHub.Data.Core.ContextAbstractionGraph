@@ -347,3 +347,85 @@ class TestEndToEndWithEngine:
 
         assert run.status == "completed"
         assert len(steps_handled) == 10
+
+    def test_driver_handles_table_optimizer_workflow(self, driver):
+        """Integration: ShiftDriver walks the full 9-step table-optimizer workflow."""
+        engine = DCAGEngine(content_dir=CONTENT_DIR)
+        cassette_dir = Path(__file__).parent / "cassettes" / "table-optimizer"
+
+        expected_steps = [
+            "identify_table",
+            "detect_load_frequency",
+            "analyze_query_patterns",
+            "assess_clustering",
+            "check_partitioning",
+            "analyze_materialization",
+            "show_recommendations",
+            "generate_report",
+            "apply_changes",
+        ]
+        reason_steps = [s for s in expected_steps if s not in ("show_recommendations", "apply_changes")]
+
+        # Load cassettes for the 7 reason steps
+        cassettes = {}
+        for step_id in reason_steps:
+            with open(cassette_dir / f"{step_id}.json") as f:
+                cassettes[step_id] = json.load(f)
+
+        run = engine.start("table-optimizer", {"table_name": "TRANSACTION"})
+        assert run.status == "running"
+
+        steps_handled = []
+        prompts_assembled = []
+        delegates_routed = []
+
+        while run.status == "running":
+            request = run.next_step()
+            if request is None:
+                break
+
+            steps_handled.append(request.step_id)
+
+            if isinstance(request, ReasonRequest):
+                # Driver assembles prompt
+                prompt = driver.assemble_prompt(request)
+                assert len(prompt) > 0
+                prompts_assembled.append(request.step_id)
+
+                # Use cassette output
+                cassette = cassettes[request.step_id]
+                run.record_result(
+                    request.step_id,
+                    StepSuccess(output=cassette["output"]),
+                )
+            elif isinstance(request, DelegateRequest):
+                # Driver routes delegate
+                action = driver.route_delegate(request)
+                delegates_routed.append(request.step_id)
+                assert "capability" in action
+                assert "requires_approval" in action
+
+                # Dummy approval for delegate steps
+                if request.step_id == "show_recommendations":
+                    run.record_result(
+                        request.step_id,
+                        StepSuccess(output={"approved": True, "user_feedback": None}),
+                    )
+                elif request.step_id == "apply_changes":
+                    run.record_result(
+                        request.step_id,
+                        StepSuccess(output={"pr_url": "https://github.com/stubhub/astronomer-core-data/pull/99"}),
+                    )
+
+        # Workflow completed all 9 steps
+        assert run.status == "completed"
+        assert len(steps_handled) == 9
+        assert steps_handled == expected_steps
+
+        # Driver assembled prompts for all 7 reason steps
+        assert len(prompts_assembled) == 7
+        assert set(prompts_assembled) == set(reason_steps)
+
+        # Driver routed both delegate steps
+        assert len(delegates_routed) == 2
+        assert set(delegates_routed) == {"show_recommendations", "apply_changes"}

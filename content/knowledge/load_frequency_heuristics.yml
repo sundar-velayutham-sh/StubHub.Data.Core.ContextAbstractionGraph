@@ -1,0 +1,82 @@
+knowledge:
+  id: load_frequency_heuristics
+  name: Load Frequency Detection Heuristics
+  description: Rules for detecting table load frequency from dbt operational metadata
+
+  context: |
+    Load frequency determines whether a table is a good candidate for clustering.
+    Tables loaded hourly or more frequently should generally SKIP clustering because
+    the overhead of re-clustering after each load outweighs the query performance benefit.
+
+  sources:
+    - table: DW.DATAOPS_DBT.DBT_MODELS
+      description: dbt model registry with 3,676 models
+      key_columns:
+        - NAME: model name (join key)
+        - TAGS: array of schedule tags like ["core", "daily"], ["external_rpt", "hourly"]
+        - META: JSON metadata
+        - MATERIALIZATION: table, view, incremental, etc.
+
+    - table: DW.DATAOPS_DBT.DBT_RUN_RESULTS
+      description: dbt execution history with 9.2M rows
+      key_columns:
+        - NAME: model name (join key to DBT_MODELS)
+        - EXECUTE_COMPLETED_AT: timestamp of run completion
+        - EXECUTION_TIME: seconds
+        - ROWS_AFFECTED: row count per run
+        - STATUS: success, error, skipped
+
+  classification_rules:
+    - rule: tag_precedence
+      description: Schedule tags in DBT_MODELS.TAGS take precedence over computed frequency
+      tags:
+        - tag: sub_hourly
+          frequency: SUB_HOURLY
+          skip_clustering: true
+        - tag: hourly
+          frequency: HOURLY
+          skip_clustering: true
+        - tag: daily
+          frequency: DAILY
+          skip_clustering: false
+
+    - rule: computed_frequency
+      description: When no schedule tag exists, compute from run history (last 7 days)
+      query_pattern: |
+        SELECT
+          m.NAME,
+          COUNT(*) / 7.0 AS runs_per_day
+        FROM DW.DATAOPS_DBT.DBT_MODELS m
+        JOIN DW.DATAOPS_DBT.DBT_RUN_RESULTS r ON m.NAME = r.NAME
+        WHERE r.EXECUTE_COMPLETED_AT >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+          AND r.STATUS = 'success'
+        GROUP BY m.NAME
+      thresholds:
+        - min_runs_per_day: 12
+          frequency: HOURLY
+          skip_clustering: true
+        - min_runs_per_day: 1
+          frequency: MULTI_DAILY
+          skip_clustering: false
+        - min_runs_per_day: 0
+          frequency: DAILY_OR_LESS
+          skip_clustering: false
+
+  real_examples:
+    - model: tracked_browser_events
+      runs_per_day: 126
+      tags: ["events", "sub_hourly"]
+      frequency: SUB_HOURLY
+      skip_clustering: true
+
+    - model: transaction_fact
+      runs_per_day: 21
+      tags: ["core", "hourly"]
+      frequency: HOURLY
+      skip_clustering: true
+
+    - model: transaction
+      runs_per_day: 1
+      tags: ["core", "daily"]
+      frequency: DAILY
+      skip_clustering: false
