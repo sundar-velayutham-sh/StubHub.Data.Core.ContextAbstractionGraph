@@ -1,0 +1,23 @@
+{
+  "output": {
+    "column_info": {
+      "name": "PRICE",
+      "source_type": "NUMBER(10,2)",
+      "sf_type": "NUMBER(10,2)",
+      "nullable": false,
+      "null_pct": 0.0,
+      "sample_values": [29.99, 49.50, 199.00, 15.00, 75.25]
+    }
+  },
+  "decision_log": {
+    "decision": "Found PRICE column — will compute expression",
+    "rationale": "PRICE exists as NUMBER(10,2). User wants price_with_markup which requires an expression.",
+    "alternatives_considered": [],
+    "confidence": "HIGH",
+    "informed_by": ["sf_type_mapping"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.describe_table", "input": {"table": "ECOMM.APPLICATION.PRICING_ANALYTICS_EVENTS"}, "duration_ms": 1200}
+  ],
+  "token_usage": {"input": 3200, "output": 890}
+}

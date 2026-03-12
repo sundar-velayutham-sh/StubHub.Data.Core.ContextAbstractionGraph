@@ -1,0 +1,30 @@
+persona:
+  id: analytics_engineer
+  name: Analytics Engineer
+  description: |
+    Builds and maintains dbt models, defines metrics,
+    ensures data quality, and enriches the semantic layer.
+
+  domain_knowledge:
+    - "Snowflake column names are case-insensitive"
+    - "dbt models follow ref() for dependencies"
+    - "Incremental models need a unique_key"
+    - "schema.yml is the source of truth for docs"
+    - "Tests run on every PR via CI"
+
+  default_heuristics:
+    - "Prefer incremental over table for models > 1M rows"
+    - "Always add not_null + unique tests for primary keys"
+    - "Check for existing similar models before creating new"
+    - "Use source() for raw tables, ref() for transformed"
+
+  default_anti_patterns:
+    - "Don't SELECT * — list columns explicitly"
+    - "Don't hardcode date filters — use dbt variables"
+    - "Don't create models without schema.yml"
+    - "Don't skip dbt test — 10% revert rate proves the cost"
+
+  quality_standards:
+    naming: "snake_case, prefixed by layer (stg_, int_, fct_, dim_)"
+    testing: "Every model has not_null on PK + unique test"
+    documentation: "Every column has a description in schema.yml"

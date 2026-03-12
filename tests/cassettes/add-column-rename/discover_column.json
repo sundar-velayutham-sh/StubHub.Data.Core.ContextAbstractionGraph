@@ -1,0 +1,23 @@
+{
+  "output": {
+    "column_info": {
+      "name": "USERID",
+      "source_type": "VARCHAR(256)",
+      "sf_type": "VARCHAR",
+      "nullable": false,
+      "null_pct": 0.0,
+      "sample_values": ["usr_abc123", "usr_def456", "usr_ghi789"]
+    }
+  },
+  "decision_log": {
+    "decision": "Found USERID column in source — camelCase needs rename",
+    "rationale": "Column exists as USERID, needs snake_case rename to user_id per conventions.",
+    "alternatives_considered": [],
+    "confidence": "HIGH",
+    "informed_by": ["sf_type_mapping", "naming_conventions"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.describe_table", "input": {"table": "ECOMM.APPLICATION.PRICING_ANALYTICS_EVENTS"}, "duration_ms": 1200}
+  ],
+  "token_usage": {"input": 3200, "output": 890}
+}

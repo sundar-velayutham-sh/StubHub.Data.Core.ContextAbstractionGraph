@@ -1,0 +1,28 @@
+{
+  "output": {
+    "column_info": {
+      "name": "VENUE_NAME",
+      "source_type": "VARCHAR(512)",
+      "sf_type": "VARCHAR",
+      "nullable": true,
+      "null_pct": 2.1,
+      "sample_values": ["Madison Square Garden", "Staples Center", "Wrigley Field"],
+      "source_table": "DW.CORE.DIM_VENUE",
+      "join_key": "VENUE_ID"
+    }
+  },
+  "decision_log": {
+    "decision": "VENUE_NAME comes from dim_venue — requires JOIN",
+    "rationale": "Column not in source table. Found in DW.CORE.DIM_VENUE, joinable via VENUE_ID.",
+    "alternatives_considered": [
+      {"option": "Subquery", "rejected_because": "JOIN is cleaner and more maintainable"}
+    ],
+    "confidence": "HIGH",
+    "informed_by": ["sf_type_mapping", "source_table_discovery"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.describe_table", "input": {"table": "ECOMM.APPLICATION.PRICING_ANALYTICS_EVENTS"}, "duration_ms": 1200},
+    {"tool": "snowflake_mcp.execute_query", "input": {"query": "SELECT VENUE_NAME FROM DW.CORE.DIM_VENUE LIMIT 5"}, "duration_ms": 900}
+  ],
+  "token_usage": {"input": 3200, "output": 890}
+}

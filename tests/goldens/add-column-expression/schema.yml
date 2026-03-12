@@ -1,0 +1,4 @@
+- name: price_with_markup
+  description: "Price with 10% markup applied"
+  tests:
+    - not_null

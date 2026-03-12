@@ -1,0 +1,4 @@
+- name: pcid
+  description: "Pricing configuration identifier"
+  tests:
+    - not_null

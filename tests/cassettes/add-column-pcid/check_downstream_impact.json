@@ -1,0 +1,20 @@
+{
+  "output": {
+    "downstream_impact": {
+      "affected_models": ["int_pricing_events", "fct_pricing_summary"],
+      "select_star_risk": false,
+      "impact_level": "safe"
+    }
+  },
+  "decision_log": {
+    "decision": "No downstream impact — safe to add column",
+    "rationale": "2 downstream models found but none use SELECT *.",
+    "alternatives_considered": [],
+    "confidence": "HIGH",
+    "informed_by": ["dbt_project_structure"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.get_lineage_dev", "input": {"node": "stg_pricing_analytics_events"}, "duration_ms": 1500}
+  ],
+  "token_usage": {"input": 2100, "output": 450}
+}

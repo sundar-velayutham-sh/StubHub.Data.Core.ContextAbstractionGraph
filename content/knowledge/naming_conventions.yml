@@ -1,0 +1,14 @@
+knowledge:
+  id: naming_conventions
+  domain: naming
+  description: "StubHub dbt naming conventions"
+  rules:
+    column_naming: "snake_case (e.g., event_date, not EventDate)"
+    model_prefixes:
+      staging: "stg_"
+      intermediate: "int_"
+      fact: "fct_"
+      dimension: "dim_"
+    camelcase_conversion: "Convert camelCase to snake_case (userId → user_id)"
+    column_position: "Add new columns near related columns, not at the end"
+    explicit_columns: "List all columns explicitly — never SELECT *"

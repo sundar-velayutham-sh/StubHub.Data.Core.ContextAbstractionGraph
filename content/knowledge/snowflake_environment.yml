@@ -1,0 +1,12 @@
+knowledge:
+  id: snowflake_environment
+  domain: environment
+  description: "Snowflake environment configuration for DCAG workflows"
+  config:
+    current_warehouse: ANALYTICS_S
+    default_role: DATA_ANALYST
+    default_database: DW
+  guidance:
+    - "Use ANALYTICS_S warehouse for all validation queries"
+    - "Source tables may be in different databases (ECOMM, DW, etc.) — use FQN"
+    - "INFORMATION_SCHEMA queries should target the source database, not DW"

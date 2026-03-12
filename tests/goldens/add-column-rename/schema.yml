@@ -1,0 +1,4 @@
+- name: user_id
+  description: "User identifier (renamed from userId)"
+  tests:
+    - not_null

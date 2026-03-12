@@ -1,0 +1,285 @@
+workflow:
+  id: add-column-to-model
+  name: Add Column to Existing dbt Model
+  persona: analytics_engineer
+
+  inputs:
+    model_name:
+      type: string
+      required: true
+    column_name:
+      type: string
+      required: true
+    source_table:
+      type: string
+      required: false
+
+  steps:
+    # Step 0: Setup — clone Astronomer repo + dbt deps
+    - id: setup_dbt_project
+      mode: execute
+      type: script
+      script: |
+        git clone --depth 1 https://github.com/stubhub/astronomer-core-data.git /tmp/astronomer-core-data
+        cd /tmp/astronomer-core-data && dbt deps
+      fallback_on_failure: snowflake_only
+      output_schema:
+        type: object
+        required: [dbt_project_path, dbt_available, dbt_mcp_available, fallback_mode]
+
+    # Step 1: Resolve Model — find model SQL + sources.yml + resolve source table FQN
+    - id: resolve_model
+      mode: reason
+      instruction: |
+        Find the dbt model file and its sources.yml for the given model name.
+        Use dbt_mcp.get_node_details_dev to locate the model, then read the SQL file
+        and sources.yml via GitHub CLI to get existing columns and source definition.
+        Also map the dbt source reference to a fully-qualified Snowflake table name —
+        read sources.yml to get database/schema, then verify the table exists in Snowflake.
+      tools:
+        - name: dbt_mcp.get_node_details_dev
+          instruction: "Look up model metadata in dbt project"
+        - name: github_cli.search_code
+          instruction: "Search for model SQL file in the Astronomer repo"
+        - name: github_cli.read_file
+          instruction: "Read the model SQL and sources.yml"
+        - name: snowflake_mcp.execute_query
+          instruction: "Verify source table exists in INFORMATION_SCHEMA"
+      context:
+        static: [dbt_project_structure, repo_registry, source_table_discovery]
+        dynamic: []
+      output_schema:
+        type: object
+        required: [model_path, sources_yml_path, source_ref, existing_columns, source_table_fqn]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 2: Discover Column — check column in Snowflake
+    - id: discover_column
+      mode: reason
+      instruction: |
+        Check if the requested column exists in the Snowflake source table.
+        Get type, nullability, sample values. Map source type to Snowflake type.
+      tools:
+        - name: snowflake_mcp.describe_table
+          instruction: "Inspect source table for the requested column"
+          usage_pattern: |
+            1. Query INFORMATION_SCHEMA.COLUMNS for the column
+            2. If not found, ILIKE search for case variants
+            3. Capture: data_type, is_nullable, character_maximum_length
+        - name: snowflake_mcp.execute_query
+          instruction: "Sample column values to understand data shape"
+          usage_pattern: |
+            1. SELECT DISTINCT {column} FROM {table} LIMIT 20
+            2. Check NULLs: SELECT COUNT(*), COUNT({column})
+      context:
+        static: [sf_type_mapping, naming_conventions, snowflake_environment]
+        knowledge: [source_table_discovery]
+        dynamic:
+          - from: resolve_model
+            select: source_table_fqn
+      heuristics:
+        - "If column exists with different casing, confirm with user"
+        - "If timestamp-like name, prefer TIMESTAMP_NTZ"
+      anti_patterns:
+        - "Don't use NUMBER(38,0) for everything — match precision"
+        - "Don't skip NULL check"
+      output_schema:
+        type: object
+        required: [column_info]
+        properties:
+          column_info:
+            type: object
+            required: [name, source_type, sf_type, nullable]
+      quality_criteria:
+        - "SF type is specific (not default VARCHAR for everything)"
+        - "Null percentage is reported"
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 3: Determine Logic — classify intent level
+    - id: determine_logic
+      mode: reason
+      instruction: |
+        Classify the column addition intent:
+        - passthrough: column exists in source, use as-is
+        - rename: column exists but needs camelCase→snake_case or similar rename
+        - expression: column needs a computed expression (ROUND, CONCAT, CASE, etc.)
+        - join: column comes from a different table via JOIN
+        If intent is "join", flag the join plan in Slack proactively before proceeding.
+        If multiple columns detected in input, flag to user and run workflow once per column.
+      tools: []
+      context:
+        static: [naming_conventions]
+        dynamic:
+          - from: discover_column
+            select: column_info
+          - from: resolve_model
+            select: existing_columns
+      output_schema:
+        type: object
+        required: [intent_level, column_expression, join_required]
+        properties:
+          intent_level:
+            type: string
+            enum: [passthrough, rename, expression, join]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 5000
+
+    # Step 4: Check Downstream Impact
+    - id: check_downstream_impact
+      mode: reason
+      instruction: |
+        Check what models depend on this model. Use dbt_mcp.get_lineage_dev first,
+        fall back to GitHub code search for ref() patterns if lineage unavailable.
+        Assess SELECT * risk and overall impact level.
+      tools:
+        - name: dbt_mcp.get_lineage_dev
+          instruction: "Get downstream lineage for the model"
+        - name: github_cli.search_code
+          instruction: "Search for ref() patterns referencing this model"
+      context:
+        static: [dbt_project_structure]
+        dynamic:
+          - from: discover_column
+            select: column_info
+          - from: resolve_model
+            select: model_path
+      heuristics:
+        - "If downstream models use SELECT *, warn the user"
+      output_schema:
+        type: object
+        required: [downstream_impact]
+        properties:
+          downstream_impact:
+            type: object
+            required: [affected_models, select_star_risk, impact_level]
+
+    # Step 5: Show Plan — DELEGATE (user confirms before file modifications)
+    - id: show_plan
+      mode: execute
+      type: delegate
+      delegate: shift.show_plan
+      requires_approval: true
+      context:
+        dynamic:
+          - from: resolve_model
+            select: model_path
+          - from: discover_column
+            select: column_info
+          - from: determine_logic
+          - from: check_downstream_impact
+            select: downstream_impact
+
+    # Step 6: Modify Staging SQL — REASON (not template)
+    - id: modify_staging_sql
+      mode: reason
+      instruction: |
+        Read the existing SQL file and produce the FULL modified file with the new column added.
+        Infer the existing coding style (uppercase/lowercase, indentation, column ordering).
+        Place the new column near related columns, not at the end.
+        Output the complete modified file content — not a diff or partial snippet.
+      tools:
+        - name: github_cli.read_file
+          instruction: "Read the current model SQL file"
+      context:
+        static: [naming_conventions]
+        dynamic:
+          - from: discover_column
+            select: column_info
+          - from: determine_logic
+          - from: resolve_model
+            select: model_path
+      anti_patterns:
+        - "Don't output a diff — output the full modified file"
+        - "Don't change existing column order unless adding a related column nearby"
+        - "Don't add SELECT * — list all columns explicitly"
+      output_schema:
+        type: object
+        required: [modified_sql, changes_made]
+      quality_criteria:
+        - "Full file output, not partial"
+        - "Matches existing SQL style"
+
+    # Step 7: Update Schema YAML — REASON (not template)
+    - id: update_schema_yml
+      mode: reason
+      instruction: |
+        Read the existing schema.yml and add the column entry.
+        Include appropriate tests (not_null if column is non-nullable, unique if PK).
+        Write a clear description. Output the column entry YAML.
+      tools:
+        - name: github_cli.read_file
+          instruction: "Read the current schema.yml file to get existing column entries and formatting"
+      context:
+        static: [naming_conventions]
+        dynamic:
+          - from: discover_column
+            select: column_info
+          - from: resolve_model
+            select: sources_yml_path
+      output_schema:
+        type: object
+        required: [modified_yml, changes_made]
+
+    # Step 8: Validate — dbt compile + parse + test + show + Snowflake spot-check
+    - id: validate
+      mode: reason
+      instruction: |
+        Validate the changes using the full dbt-MCP validation suite:
+        1. dbt_mcp.compile — check SQL compiles
+        2. dbt_mcp.parse — check project parses
+        3. dbt_mcp.test — run tests for this model
+        4. dbt_mcp.show — preview output rows
+        5. Snowflake spot-check — verify data matches source
+        If dbt-MCP is unavailable (step 0 reported dbt_mcp_available: false), fall back to
+        Snowflake-only validation: run the compiled SQL as a SELECT against Snowflake and
+        verify row count + sample values. Check step 0 capabilities to determine fallback path.
+      tools:
+        - name: dbt_mcp.compile
+          instruction: "Compile the modified model SQL"
+        - name: dbt_mcp.parse
+          instruction: "Parse the full dbt project"
+        - name: dbt_mcp.test
+          instruction: "Run dbt test --select {model_name}"
+        - name: dbt_mcp.show
+          instruction: "Preview output rows for the modified model"
+        - name: snowflake_mcp.execute_query
+          instruction: "Spot-check: SELECT {column}, COUNT(*) GROUP BY 1 LIMIT 10"
+      context:
+        static: [snowflake_environment]
+        dynamic:
+          - from: setup_dbt_project
+            select: [dbt_mcp_available, fallback_mode]
+          - from: discover_column
+            select: column_info
+          - from: modify_staging_sql
+            select: modified_sql
+      heuristics:
+        - "Check step 0 capabilities — if dbt_mcp_available is false, use Snowflake-only fallback"
+      anti_patterns:
+        - "Don't skip spot-check — dbt test only checks schema, not data"
+        - "Don't skip dbt_mcp.show — it proves the data looks right"
+
+    # Step 9: Create PR — DELEGATE with structured pr_body_context (Shift renders PR body)
+    - id: create_pr
+      mode: execute
+      type: delegate
+      delegate: shift.create_pr
+      requires_approval: true
+      context:
+        dynamic:
+          - from: discover_column
+            select: column_info
+          - from: check_downstream_impact
+            select: downstream_impact
+          - from: determine_logic
+          - from: modify_staging_sql
+            select: modified_sql
+          - from: update_schema_yml
+            select: modified_yml
+          - from: validate
+            select: [tests_passed, compile_ok]

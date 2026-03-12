@@ -1,0 +1,13 @@
+knowledge:
+  id: dbt_project_structure
+  domain: project
+  description: "Astronomer dbt project layout"
+  structure:
+    models_dir: "dags/dbt/core-data-dbt/models"
+    staging_dir: "dags/dbt/core-data-dbt/models/staging"
+    mart_dir: "dags/dbt/core-data-dbt/models/mart"
+    schema_file: "schema.yml (co-located with model SQL)"
+  materialization_guide:
+    table: "Full refresh — small (<1M row) or complex incremental"
+    incremental: "Append/merge — large tables. Requires unique_key."
+    view: "No storage — simple transforms"

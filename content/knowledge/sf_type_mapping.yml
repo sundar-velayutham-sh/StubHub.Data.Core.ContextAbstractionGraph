@@ -1,0 +1,30 @@
+knowledge:
+  id: sf_type_mapping
+  domain: type_mapping
+  description: "Rules for mapping source data types to Snowflake types"
+  rules:
+    - source_pattern: "BIGINT|LONG|INT8"
+      sf_type: "NUMBER(38,0)"
+    - source_pattern: "INT|INTEGER|INT4"
+      sf_type: "NUMBER(10,0)"
+    - source_pattern: "FLOAT|DOUBLE|REAL"
+      sf_type: "FLOAT"
+    - source_pattern: "VARCHAR|STRING|TEXT|CHAR"
+      sf_type: "VARCHAR"
+    - source_pattern: "BOOLEAN|BOOL"
+      sf_type: "BOOLEAN"
+    - source_pattern: "TIMESTAMP|DATETIME"
+      sf_type: "TIMESTAMP_NTZ"
+    - source_pattern: "DATE"
+      sf_type: "DATE"
+    - source_pattern: "JSON|OBJECT|MAP|DICT"
+      sf_type: "VARIANT"
+    - source_pattern: "ARRAY|LIST"
+      sf_type: "ARRAY"
+  pii_patterns:
+    - pattern: "(?i)(email|e_mail)"
+      pii_type: "email"
+    - pattern: "(?i)(phone|mobile|cell)"
+      pii_type: "phone"
+    - pattern: "(?i)(^user_?id$|^userid$)"
+      pii_type: "user_identifier"

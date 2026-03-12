@@ -1,0 +1,7 @@
+workflows:
+  - id: add-column-to-model
+    name: Add Column to Existing dbt Model
+    persona: analytics_engineer
+    triggers:
+      keywords: [add column, new column, include field, add field]
+      input_pattern: "{column} to {model}"

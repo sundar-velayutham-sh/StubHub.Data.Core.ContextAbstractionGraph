@@ -1,0 +1,23 @@
+{
+  "output": {
+    "column_info": {
+      "name": "PCID",
+      "source_type": "NUMBER(38,0)",
+      "sf_type": "NUMBER(38,0)",
+      "nullable": false,
+      "null_pct": 0.0,
+      "sample_values": [12345, 67890, 11111, 22222, 33333]
+    }
+  },
+  "decision_log": {
+    "decision": "Mapped PCID to NUMBER(38,0)",
+    "rationale": "Source type is NUMBER(38,0), no transformation needed.",
+    "alternatives_considered": [],
+    "confidence": "HIGH",
+    "informed_by": ["sf_type_mapping"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.describe_table", "input": {"table": "ECOMM.APPLICATION.PRICING_ANALYTICS_EVENTS"}, "duration_ms": 1200}
+  ],
+  "token_usage": {"input": 3200, "output": 890}
+}

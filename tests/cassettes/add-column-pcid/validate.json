@@ -1,0 +1,23 @@
+{
+  "output": {
+    "tests_passed": true,
+    "compile_ok": true,
+    "parse_ok": true,
+    "spot_check": {
+      "row_count": 50000,
+      "sample_values": [12345, 67890],
+      "null_count": 0
+    }
+  },
+  "decision_log": {
+    "decision": "Validation passed — dbt compile+parse+test green, spot-check confirms data",
+    "rationale": "not_null test passed. Spot-check shows PCID values are numeric IDs matching source.",
+    "alternatives_considered": [],
+    "confidence": "HIGH",
+    "informed_by": []
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.compile", "input": {"node": "stg_pricing_analytics_events"}, "duration_ms": 3000}
+  ],
+  "token_usage": {"input": 2800, "output": 620}
+}

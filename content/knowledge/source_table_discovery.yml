@@ -1,0 +1,11 @@
+knowledge:
+  id: source_table_discovery
+  domain: discovery
+  description: "How to discover and inspect source table columns"
+  guidance:
+    - "Source tables live in ECOMM.APPLICATION (analytics events) or DW.STAGE (CDC)"
+    - "Column names in source may use camelCase — convert to snake_case for dbt"
+    - "Analytics event columns must case-insensitive match the event field name"
+    - "Check INFORMATION_SCHEMA.COLUMNS for type, nullable, character_maximum_length"
+    - "Run SELECT DISTINCT col LIMIT 20 to verify data shape"
+    - "Check NULL percentage — 100% NULL means column is not yet populated"

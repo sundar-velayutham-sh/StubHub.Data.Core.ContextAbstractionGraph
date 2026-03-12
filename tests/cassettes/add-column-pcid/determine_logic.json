@@ -1,0 +1,18 @@
+{
+  "output": {
+    "intent_level": "passthrough",
+    "transformation": null,
+    "join_required": false,
+    "column_expression": "PCID",
+    "alias": null
+  },
+  "decision_log": {
+    "decision": "Level 1 pass-through — column exists in source, no transformation needed",
+    "rationale": "PCID is a direct column in the source table with matching type.",
+    "alternatives_considered": [],
+    "confidence": "HIGH",
+    "informed_by": ["naming_conventions"]
+  },
+  "tool_calls": [],
+  "token_usage": {"input": 2500, "output": 400}
+}

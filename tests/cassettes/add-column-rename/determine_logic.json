@@ -1,0 +1,18 @@
+{
+  "output": {
+    "intent_level": "rename",
+    "transformation": "camelCase to snake_case",
+    "join_required": false,
+    "column_expression": "USERID AS USER_ID",
+    "alias": "USER_ID"
+  },
+  "decision_log": {
+    "decision": "Level 2 rename — camelCase to snake_case conversion",
+    "rationale": "USERID needs rename to user_id per naming conventions.",
+    "alternatives_considered": [],
+    "confidence": "HIGH",
+    "informed_by": ["naming_conventions"]
+  },
+  "tool_calls": [],
+  "token_usage": {"input": 2500, "output": 400}
+}

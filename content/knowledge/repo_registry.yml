@@ -1,0 +1,16 @@
+knowledge:
+  id: repo_registry
+  domain: repository
+  description: "Registry of Git repositories and their dbt project paths"
+  repos:
+    - name: astronomer-core-data
+      github: stubhub/astronomer-core-data
+      dbt_project_root: "dags/dbt/core-data-dbt/"
+      models_dir: "dags/dbt/core-data-dbt/models"
+      staging_dir: "dags/dbt/core-data-dbt/models/staging"
+      default_branch: main
+  conventions:
+    - "All dbt models live in the astronomer-core-data repo"
+    - "Staging models are prefixed with stg_ and live in models/staging/{source}/"
+    - "Each source has its own subdirectory under staging"
+    - "schema.yml is co-located with model SQL files"

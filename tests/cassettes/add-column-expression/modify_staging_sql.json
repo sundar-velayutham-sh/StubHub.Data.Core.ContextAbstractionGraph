@@ -1,0 +1,18 @@
+{
+  "output": {
+    "modified_sql": "SELECT\n    CCSID,\n    SITELINKREFERENCEID,\n    TEXT_TEMPLATESITELINKID,\n    ROUND(PRICE * 1.1, 2) AS PRICE_WITH_MARKUP,\n    LASTUPDATEDATE\nFROM {{ source('ecomm_application', 'pricing_analytics_events') }}",
+    "changes_made": ["Added ROUND(PRICE * 1.1, 2) AS PRICE_WITH_MARKUP expression"],
+    "style_notes": "Preserved existing uppercase naming, expression uses ROUND for clean decimals"
+  },
+  "decision_log": {
+    "decision": "Added computed expression for price_with_markup",
+    "rationale": "10% markup with ROUND for precision.",
+    "alternatives_considered": [],
+    "confidence": "HIGH",
+    "informed_by": ["naming_conventions"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": {"path": "dags/dbt/core-data-dbt/models/staging/ecomm/stg_pricing_analytics_events.sql"}, "duration_ms": 400}
+  ],
+  "token_usage": {"input": 4200, "output": 1100}
+}

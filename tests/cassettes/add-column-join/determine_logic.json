@@ -1,0 +1,28 @@
+{
+  "output": {
+    "intent_level": "join",
+    "transformation": null,
+    "join_required": true,
+    "column_expression": "v.VENUE_NAME",
+    "alias": null,
+    "join_plan": {
+      "join_type": "LEFT JOIN",
+      "join_table": "dim_venue",
+      "join_ref": "{{ ref('dim_venue') }}",
+      "join_alias": "v",
+      "source_alias": "e",
+      "join_condition": "e.VENUE_ID = v.VENUE_ID"
+    }
+  },
+  "decision_log": {
+    "decision": "Level 4 join — venue_name from dim_venue via LEFT JOIN",
+    "rationale": "Column is in a different table. LEFT JOIN preserves all source rows.",
+    "alternatives_considered": [
+      {"option": "INNER JOIN", "rejected_because": "Would drop rows without venue — LEFT JOIN is safer"}
+    ],
+    "confidence": "HIGH",
+    "informed_by": ["naming_conventions", "dbt_project_structure"]
+  },
+  "tool_calls": [],
+  "token_usage": {"input": 2500, "output": 600}
+}

@@ -1,0 +1,20 @@
+{
+  "output": {
+    "intent_level": "expression",
+    "transformation": "ROUND(PRICE * 1.1, 2)",
+    "join_required": false,
+    "column_expression": "ROUND(PRICE * 1.1, 2) AS PRICE_WITH_MARKUP",
+    "alias": "PRICE_WITH_MARKUP"
+  },
+  "decision_log": {
+    "decision": "Level 3 expression — computed column with 10% markup",
+    "rationale": "price_with_markup requires a calculation. ROUND for clean decimal output.",
+    "alternatives_considered": [
+      {"option": "PRICE * 1.1 without ROUND", "rejected_because": "Floating point artifacts"}
+    ],
+    "confidence": "HIGH",
+    "informed_by": ["naming_conventions"]
+  },
+  "tool_calls": [],
+  "token_usage": {"input": 2500, "output": 400}
+}

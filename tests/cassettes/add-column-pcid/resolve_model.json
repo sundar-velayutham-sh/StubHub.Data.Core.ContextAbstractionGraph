@@ -1,0 +1,23 @@
+{
+  "output": {
+    "model_path": "dags/dbt/core-data-dbt/models/staging/ecomm/stg_pricing_analytics_events.sql",
+    "sources_yml_path": "dags/dbt/core-data-dbt/models/staging/ecomm/sources.yml",
+    "source_ref": "{{ source('ecomm_application', 'pricing_analytics_events') }}",
+    "existing_columns": ["CCSID", "SITELINKREFERENCEID", "TEXT_TEMPLATESITELINKID", "LASTUPDATEDATE"],
+    "source_table_fqn": "ECOMM.APPLICATION.PRICING_ANALYTICS_EVENTS",
+    "source_database": "ECOMM",
+    "source_schema": "APPLICATION",
+    "source_table": "PRICING_ANALYTICS_EVENTS"
+  },
+  "decision_log": {
+    "decision": "Found model via dbt_mcp.get_node_details_dev and resolved source table FQN",
+    "rationale": "Model stg_pricing_analytics_events maps to source ecomm_application.pricing_analytics_events.",
+    "alternatives_considered": [],
+    "confidence": "HIGH",
+    "informed_by": ["dbt_project_structure", "repo_registry", "source_table_discovery"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.get_node_details_dev", "input": {"node": "stg_pricing_analytics_events"}, "duration_ms": 800}
+  ],
+  "token_usage": {"input": 4200, "output": 1100}
+}

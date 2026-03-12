@@ -1,0 +1,82 @@
+# Workflow conformance test — validates context assembly per step WITHOUT an LLM.
+# Run by test_conformance.py — asserts that the graph produces the right context.
+conformance:
+  workflow_id: add-column-to-model
+
+  steps:
+    setup_dbt_project:
+      type: ExecuteScriptRequest
+
+    resolve_model:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - dbt_project_structure
+        - repo_registry
+      tools_include:
+        - dbt_mcp.get_node_details_dev
+        - github_cli.search_code
+        - snowflake_mcp.execute_query
+      tools_exclude:
+        - github_cli.create_pr
+      has_instruction: true
+
+    discover_column:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - sf_type_mapping
+      tools_include:
+        - snowflake_mcp.describe_table
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - resolve_model
+      has_instruction: true
+
+    determine_logic:
+      type: ReasonRequest
+      tools_count: 0
+      dynamic_refs_from:
+        - discover_column
+        - resolve_model
+      has_instruction: true
+
+    check_downstream_impact:
+      type: ReasonRequest
+      tools_include:
+        - dbt_mcp.get_lineage_dev
+        - github_cli.search_code
+      has_instruction: true
+
+    show_plan:
+      type: DelegateRequest
+      requires_approval: true
+
+    modify_staging_sql:
+      type: ReasonRequest
+      tools_include:
+        - github_cli.read_file
+      tools_exclude:
+        - snowflake_mcp.execute_query
+      has_instruction: true
+
+    update_schema_yml:
+      type: ReasonRequest
+      tools_include:
+        - github_cli.read_file
+      has_instruction: true
+
+    validate:
+      type: ReasonRequest
+      tools_include:
+        - dbt_mcp.compile
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - setup_dbt_project
+        - discover_column
+        - modify_staging_sql
+      has_instruction: true
+
+    create_pr:
+      type: DelegateRequest
+      requires_approval: true
