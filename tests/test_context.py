@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from dcag._context import ContextAssembler
 from dcag._loaders import PersonaLoader, KnowledgeLoader, WorkflowLoader
+from dcag._registry import ToolRegistry
 from dcag.types import ReasonRequest, ContextBundle
 
 CONTENT_DIR = Path(__file__).parent.parent / "content"
@@ -61,3 +62,72 @@ class TestContextAssembler:
         assert "dbt_project_structure" in request.context.static
         # Tokens estimated
         assert request.context.estimated_tokens > 0
+
+
+@pytest.fixture
+def registry_degraded():
+    """Registry in snowflake-only mode."""
+    reg = ToolRegistry()
+    reg.update_capabilities({
+        "dbt_available": False,
+        "dbt_mcp_available": False,
+        "github_available": False,
+    })
+    return reg
+
+
+@pytest.fixture
+def assembler_with_registry(registry_degraded):
+    return ContextAssembler(
+        persona_loader=PersonaLoader(CONTENT_DIR / "personas"),
+        knowledge_loader=KnowledgeLoader(CONTENT_DIR / "knowledge"),
+        registry=registry_degraded,
+    )
+
+
+class TestToolFiltering:
+    def test_degraded_mode_filters_dbt_and_github(self, assembler_with_registry, workflow):
+        """In snowflake_only mode, only snowflake tools appear in ReasonRequest."""
+        step = workflow.steps[1]  # resolve_model: has dbt + github + snowflake tools
+        persona = PersonaLoader(CONTENT_DIR / "personas").load("analytics_engineer")
+        request = assembler_with_registry.assemble_reason(
+            step=step, persona=persona, prior_outputs={},
+            workflow_inputs={"model_name": "test", "column_name": "pcid"},
+        )
+        tool_names = [t.name for t in request.tools]
+        assert "snowflake_mcp.execute_query" in tool_names
+        assert "dbt_mcp.get_node_details_dev" not in tool_names
+        assert "github_cli.search_code" not in tool_names
+        assert "github_cli.read_file" not in tool_names
+
+    def test_full_mode_keeps_all_tools(self, workflow):
+        """With no registry (default), all tools pass through."""
+        assembler = ContextAssembler(
+            persona_loader=PersonaLoader(CONTENT_DIR / "personas"),
+            knowledge_loader=KnowledgeLoader(CONTENT_DIR / "knowledge"),
+        )
+        step = workflow.steps[1]  # resolve_model
+        persona = PersonaLoader(CONTENT_DIR / "personas").load("analytics_engineer")
+        request = assembler.assemble_reason(
+            step=step, persona=persona, prior_outputs={},
+            workflow_inputs={"model_name": "test", "column_name": "pcid"},
+        )
+        assert len(request.tools) == 4
+
+    def test_token_estimate_uses_filtered_tools(self, assembler_with_registry, workflow):
+        """Token estimate should reflect only available tools, not all declared tools."""
+        assembler_full = ContextAssembler(
+            persona_loader=PersonaLoader(CONTENT_DIR / "personas"),
+            knowledge_loader=KnowledgeLoader(CONTENT_DIR / "knowledge"),
+        )
+        step = workflow.steps[1]
+        persona = PersonaLoader(CONTENT_DIR / "personas").load("analytics_engineer")
+        request_full = assembler_full.assemble_reason(
+            step=step, persona=persona, prior_outputs={},
+            workflow_inputs={"model_name": "test", "column_name": "pcid"},
+        )
+        request_degraded = assembler_with_registry.assemble_reason(
+            step=step, persona=persona, prior_outputs={},
+            workflow_inputs={"model_name": "test", "column_name": "pcid"},
+        )
+        assert request_degraded.context.estimated_tokens < request_full.context.estimated_tokens

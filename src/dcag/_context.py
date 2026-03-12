@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from dcag._loaders import KnowledgeLoader, PersonaLoader
+from dcag._registry import ToolRegistry
 from dcag._tokens import estimate_tokens
 from dcag.types import (
     Budget,
@@ -20,9 +21,10 @@ logger = logging.getLogger(__name__)
 class ContextAssembler:
     """Assembles context for each step: static + dynamic + persona merge."""
 
-    def __init__(self, persona_loader: PersonaLoader, knowledge_loader: KnowledgeLoader):
+    def __init__(self, persona_loader: PersonaLoader, knowledge_loader: KnowledgeLoader, registry: ToolRegistry | None = None):
         self._personas = persona_loader
         self._knowledge = knowledge_loader
+        self._registry = registry
 
     def build_static(self, static_refs: list[str]) -> dict[str, Any]:
         """Load static knowledge files."""
@@ -90,6 +92,9 @@ class ContextAssembler:
         static = self.build_static(step.context_static)
         dynamic = self.build_dynamic(step.context_dynamic, prior_outputs)
 
+        # Filter tools through registry if available
+        available_tools = self._registry.resolve_available(step.tools) if self._registry else step.tools
+
         # Estimate tokens
         total_tokens = (
             estimate_tokens(static)
@@ -97,7 +102,7 @@ class ContextAssembler:
             + estimate_tokens(merged.domain_knowledge)
             + estimate_tokens(merged.heuristics)
             + estimate_tokens(merged.anti_patterns)
-            + estimate_tokens([t.instruction + (t.usage_pattern or "") for t in step.tools])
+            + estimate_tokens([t.instruction + (t.usage_pattern or "") for t in available_tools])
         )
 
         budget = step.budget or Budget()
@@ -117,7 +122,7 @@ class ContextAssembler:
                 domain_knowledge=merged.domain_knowledge,
                 estimated_tokens=total_tokens,
             ),
-            tools=step.tools,
+            tools=available_tools,
             output_schema=step.output_schema,
             quality_criteria=step.quality_criteria,
             budget=budget,
