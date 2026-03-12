@@ -1,0 +1,30 @@
+knowledge:
+  id: ingestion_conventions
+  domain: ingestion
+  description: "CDC patterns, staging conventions, and idempotency rules"
+  guidance:
+    - "All CDC tables must have _LOADED_AT and _SOURCE columns"
+    - "Use COPY INTO with PURGE=FALSE for audit trail"
+    - "Stage naming: {EVENT_NAME}_EXTERNAL_STAGE"
+    - "Idempotent loads: use METADATA$FILENAME + METADATA$FILE_ROW_NUMBER as dedup key"
+    - "Staging tables use TRANSIENT for cost savings"
+  cdc_patterns:
+    append_only:
+      description: "New rows appended, no updates"
+      strategy: "COPY INTO with ON_ERROR=CONTINUE"
+    scd_type_2:
+      description: "Track full history of changes"
+      strategy: "MERGE with effective_from/effective_to dates"
+    upsert:
+      description: "Insert or update based on key"
+      strategy: "MERGE ON primary_key WHEN MATCHED THEN UPDATE"
+  staging_conventions:
+    prefix: "stg_"
+    schema: "STAGING"
+    materialization: "incremental"
+    unique_key: "_LOADED_AT, primary_key"
+  idempotency_rules:
+    - "Always use IF NOT EXISTS for CREATE TABLE"
+    - "Use METADATA$FILENAME to skip already-loaded files"
+    - "COPY INTO is naturally idempotent with load history"
+    - "Tasks should be idempotent — safe to re-run on failure"

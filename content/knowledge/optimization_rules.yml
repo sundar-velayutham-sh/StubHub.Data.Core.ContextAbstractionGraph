@@ -1,0 +1,35 @@
+knowledge:
+  id: optimization_rules
+  domain: performance
+  description: "Snowflake table optimization rules — scan stats, pruning, clustering"
+  guidance:
+    - "Tables < 1GB rarely benefit from clustering — skip"
+    - "Use SYSTEM$CLUSTERING_INFORMATION to check clustering depth and overlap"
+    - "Clustering depth > 2 indicates poor clustering"
+    - "Overlap percentage > 50% means significant partition scanning waste"
+    - "Check TABLE_STORAGE_METRICS for active bytes vs time travel bytes"
+    - "Use ANALYTICS_M warehouse for metadata queries — _S causes timeouts"
+    - "Default to 7-day lookback in QUERY_HISTORY — 30 days causes ACCOUNT_USAGE timeouts"
+  scan_thresholds:
+    good_prune_ratio: 0.8
+    acceptable_prune_ratio: 0.5
+    poor_prune_ratio: 0.2
+    description: "Ratio of partitions pruned vs scanned. Higher = better."
+  clustering_signals:
+    high_benefit:
+      - "80%+ queries filter on same column"
+      - "Table > 10GB with range scans"
+      - "Clustering depth > 3"
+    low_benefit:
+      - "Table < 1GB"
+      - "Full-table scans dominate"
+      - "High-cardinality filter columns"
+  sos_candidates:
+    description: "Search Optimization Service — best for point lookups"
+    when_to_use:
+      - "Equality filters (WHERE id = X)"
+      - "VARIANT/OBJECT column searches"
+      - "Geo-spatial queries"
+    when_to_avoid:
+      - "Range scans (BETWEEN, >, <)"
+      - "Rarely-filtered columns"

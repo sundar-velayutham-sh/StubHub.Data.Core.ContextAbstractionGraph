@@ -1,0 +1,20 @@
+{
+  "output": {
+    "query_count": 920,
+    "filter_columns": [
+      {"name": "TRANSACTION_ID", "frequency_pct": 78, "pattern": "point_lookup"},
+      {"name": "EVENT_DATE", "frequency_pct": 55, "pattern": "range_scan"}
+    ],
+    "access_patterns": {"range_scans": 40, "point_lookups": 60},
+    "avg_prune_ratio": 0.42
+  },
+  "decision_log": {
+    "decision": "Mixed access patterns, TRANSACTION_ID dominant",
+    "rationale": "Point lookups on TRANSACTION_ID dominate, with secondary range scans on EVENT_DATE",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["QUERY_HISTORY"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1500, "completion": 400}
+}

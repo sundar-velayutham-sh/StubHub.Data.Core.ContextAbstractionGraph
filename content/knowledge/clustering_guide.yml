@@ -1,0 +1,32 @@
+knowledge:
+  id: clustering_guide
+  domain: performance
+  description: "Clustering key selection heuristics for Snowflake tables"
+  guidance:
+    - "Order clustering keys by selectivity — most selective first"
+    - "Cardinality < 10% of row count makes a good clustering key"
+    - "Date/timestamp columns are natural clustering keys for time-series data"
+    - "Avoid clustering on high-cardinality columns (user_id, transaction_id)"
+    - "For incremental models, set cluster_by in dbt config rather than ALTER TABLE"
+    - "Full-refresh models should use ORDER BY in the query instead of CLUSTER BY"
+  decision_matrix:
+    skip:
+      condition: "Table < 1GB OR already well-clustered (depth <= 1)"
+      action: "No changes needed"
+    order_by:
+      condition: "Full-refresh model with clear sort column"
+      action: "Add ORDER BY to the SELECT statement"
+    cluster_by:
+      condition: "Incremental model + high query volume + consistent filter patterns"
+      action: "Add cluster_by to dbt model config"
+    cluster_by_and_sos:
+      condition: "Mixed access patterns — range scans AND point lookups"
+      action: "Cluster for range scans, enable SOS for point lookups"
+    monitor:
+      condition: "Uncertain — insufficient query history or mixed patterns"
+      action: "Set up monitoring, revisit after 7 days of data"
+  key_ordering_rules:
+    - "Most-filtered column first"
+    - "Lower cardinality before higher cardinality"
+    - "Date columns before categorical columns"
+    - "Maximum 3-4 keys — more keys reduce effectiveness"

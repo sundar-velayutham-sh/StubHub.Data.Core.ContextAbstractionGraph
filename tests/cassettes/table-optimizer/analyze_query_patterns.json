@@ -1,0 +1,26 @@
+{
+  "output": {
+    "query_count": 1842,
+    "filter_columns": [
+      {"name": "EVENT_DATE", "frequency_pct": 92, "pattern": "range_scan"},
+      {"name": "VENUE_ID", "frequency_pct": 45, "pattern": "point_lookup"},
+      {"name": "BUYER_ID", "frequency_pct": 12, "pattern": "point_lookup"}
+    ],
+    "access_patterns": {
+      "range_scans": 85,
+      "point_lookups": 15
+    },
+    "avg_prune_ratio": 0.35
+  },
+  "decision_log": {
+    "decision": "EVENT_DATE is dominant filter column with range scans",
+    "rationale": "92% of queries filter on EVENT_DATE, mostly BETWEEN patterns",
+    "alternatives_considered": [{"option": "VENUE_ID as primary key", "reason": "Only 45% frequency"}],
+    "confidence": "high",
+    "informed_by": ["QUERY_HISTORY"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT ... FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"}
+  ],
+  "token_usage": {"prompt": 1500, "completion": 500}
+}

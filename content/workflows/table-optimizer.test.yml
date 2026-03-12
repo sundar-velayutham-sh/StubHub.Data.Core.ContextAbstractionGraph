@@ -1,0 +1,88 @@
+conformance:
+  workflow_id: table-optimizer
+
+  steps:
+    identify_table:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - optimization_rules
+      tools_include:
+        - snowflake_mcp.execute_query
+        - snowflake_mcp.describe_table
+      has_instruction: true
+
+    detect_load_frequency:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - identify_table
+      has_instruction: true
+
+    analyze_query_patterns:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - identify_table
+      has_instruction: true
+
+    assess_clustering:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - clustering_guide
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - identify_table
+        - analyze_query_patterns
+      has_instruction: true
+
+    check_partitioning:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - identify_table
+        - analyze_query_patterns
+      has_instruction: true
+
+    analyze_materialization:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+        - github_cli.search_code
+      dynamic_refs_from:
+        - identify_table
+        - analyze_query_patterns
+      has_instruction: true
+
+    show_recommendations:
+      type: DelegateRequest
+      requires_approval: true
+
+    generate_report:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_count: 0
+      knowledge_includes:
+        - clustering_guide
+        - optimization_rules
+      dynamic_refs_from:
+        - identify_table
+        - detect_load_frequency
+        - analyze_query_patterns
+        - assess_clustering
+        - check_partitioning
+        - analyze_materialization
+      has_instruction: true
+
+    apply_changes:
+      type: DelegateRequest
+      requires_approval: true

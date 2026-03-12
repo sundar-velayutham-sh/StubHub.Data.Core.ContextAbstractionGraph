@@ -5,3 +5,10 @@ workflows:
     triggers:
       keywords: [add column, new column, include field, add field]
       input_pattern: "{column} to {model}"
+
+  - id: table-optimizer
+    name: Optimize Snowflake Table Performance
+    persona: data_engineer
+    triggers:
+      keywords: [optimize table, clustering, table performance, slow queries, partition]
+      input_pattern: "optimize {table}"

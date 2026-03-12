@@ -1,0 +1,298 @@
+workflow:
+  id: table-optimizer
+  name: Optimize Snowflake Table Performance
+  persona: data_engineer
+
+  inputs:
+    table_name:
+      type: string
+      required: true
+    database:
+      type: string
+      required: false
+    schema:
+      type: string
+      required: false
+
+  steps:
+    # Step 0: Identify table and collect storage metrics
+    - id: identify_table
+      mode: reason
+      instruction: |
+        Find the specified table in Snowflake. Get its fully-qualified name,
+        row count, size in bytes, and creation date. Check TABLE_STORAGE_METRICS
+        for active bytes, time travel bytes, and failsafe bytes.
+        If database/schema not specified, search INFORMATION_SCHEMA across known databases.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query INFORMATION_SCHEMA.TABLES and TABLE_STORAGE_METRICS"
+          usage_pattern: |
+            1. SELECT * FROM {db}.INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME ILIKE '{name}'
+            2. SELECT * FROM SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS WHERE TABLE_NAME = '{name}'
+        - name: snowflake_mcp.describe_table
+          instruction: "Get column details for the table"
+      context:
+        static: [snowflake_environment, optimization_rules]
+        dynamic: []
+      output_schema:
+        type: object
+        required: [table_fqn, row_count, size_bytes, columns, storage_metrics]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 1: Detect load frequency from DATAOPS_DBT
+    - id: detect_load_frequency
+      mode: reason
+      instruction: |
+        Detect how frequently this table is loaded by querying the dbt operational
+        metadata in DW.DATAOPS_DBT. Use two signals:
+
+        1. DBT_MODELS.TAGS — explicit schedule tags (e.g., "hourly", "sub_hourly", "daily")
+        2. DBT_RUN_RESULTS joined to DBT_MODELS — actual run frequency over last 7 days
+
+        Query pattern:
+          SELECT m.NAME, m.MATERIALIZATION, m.TAGS,
+            COUNT(rr.MODEL_EXECUTION_ID) as run_count_7d,
+            ROUND(COUNT(rr.MODEL_EXECUTION_ID) /
+              NULLIF(COUNT(DISTINCT DATE_TRUNC('DAY', rr.CREATED_AT)), 0), 1) as avg_runs_per_day
+          FROM DW.DATAOPS_DBT.DBT_MODELS m
+          LEFT JOIN DW.DATAOPS_DBT.DBT_RUN_RESULTS rr
+            ON rr.NAME = m.NAME
+            AND rr.CREATED_AT >= DATEADD('day', -7, CURRENT_TIMESTAMP())
+            AND rr.STATUS = 'success' AND rr.RESOURCE_TYPE = 'model'
+          WHERE UPPER(m.DATABASE_NAME || '.' || m.SCHEMA_NAME || '.' || m.NAME) = '{table_fqn}'
+          GROUP BY 1,2,3
+
+        Classification:
+        - TAGS contains "sub_hourly" → SUB_HOURLY
+        - TAGS contains "hourly" → HOURLY
+        - TAGS contains "daily" → DAILY
+        - avg_runs_per_day > 12 (fallback) → HOURLY
+        - Otherwise → DAILY_OR_LESS
+
+        If load frequency is HOURLY or SUB_HOURLY, set skip_clustering to true
+        with rationale: hourly loads cause constant micro-partition churn that
+        undermines clustering — re-clustering credits are wasted.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query DW.DATAOPS_DBT.DBT_MODELS and DBT_RUN_RESULTS for load frequency"
+          usage_pattern: |
+            1. Join DBT_MODELS to DBT_RUN_RESULTS on NAME
+            2. Filter run results to last 7 days, status = 'success'
+            3. Check TAGS for schedule indicators
+            4. Calculate avg_runs_per_day as fallback signal
+      context:
+        static: [optimization_rules]
+        dynamic:
+          - from: identify_table
+            select: table_fqn
+      heuristics:
+        - "Trust TAGS over computed frequency — teams explicitly tag their schedule"
+        - "If no dbt model found, assume DAILY_OR_LESS (non-dbt tables are typically batch)"
+        - "> 12 runs/day with no tag = likely hourly (Astronomer runs every hour)"
+      anti_patterns:
+        - "Don't skip this check — hourly tables waste clustering credits"
+        - "Don't assume all incremental models are hourly — many run daily"
+      output_schema:
+        type: object
+        required: [load_frequency, avg_runs_per_day, skip_clustering, is_dbt_managed, tags]
+        properties:
+          load_frequency:
+            type: string
+            enum: [SUB_HOURLY, HOURLY, DAILY, DAILY_OR_LESS, UNKNOWN]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 2: Analyze query patterns from QUERY_HISTORY
+    - id: analyze_query_patterns
+      mode: reason
+      instruction: |
+        Analyze the last 7 days of QUERY_HISTORY for this table.
+        Identify: most common WHERE clause columns, access patterns
+        (range scans vs point lookups), average scan-to-prune ratio,
+        and query frequency. Classify each filter column by pattern type.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query ACCOUNT_USAGE.QUERY_HISTORY and ACCESS_HISTORY"
+          usage_pattern: |
+            1. Filter QUERY_HISTORY for queries touching this table (last 7 days)
+            2. Extract WHERE clause columns and filter patterns
+            3. Calculate avg partitions scanned vs pruned
+      context:
+        static: [optimization_rules]
+        dynamic:
+          - from: identify_table
+            select: table_fqn
+      heuristics:
+        - "If 80%+ queries filter on same column, it's a primary clustering candidate"
+        - "Cardinality < 10% of row count = good clustering key"
+        - "Cardinality > 10% of row count = potential SOS candidate"
+      anti_patterns:
+        - "Don't recommend clustering on high-cardinality columns (user_id, transaction_id)"
+        - "Don't use > 7 day lookback — causes ACCOUNT_USAGE timeouts"
+      output_schema:
+        type: object
+        required: [query_count, filter_columns, access_patterns, avg_prune_ratio]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 2: Assess current clustering state
+    - id: assess_clustering
+      mode: reason
+      instruction: |
+        Evaluate current clustering for the table using SYSTEM$CLUSTERING_INFORMATION.
+        Compare current clustering keys (if any) against the optimal keys suggested
+        by query pattern analysis. Report clustering depth, overlap, and whether
+        re-clustering would improve performance.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Run SYSTEM$CLUSTERING_INFORMATION and check current cluster keys"
+          usage_pattern: |
+            1. SELECT SYSTEM$CLUSTERING_INFORMATION('{table}')
+            2. SHOW TABLES LIKE '{table}' — check cluster_by column
+      context:
+        static: [clustering_guide]
+        dynamic:
+          - from: identify_table
+            select: [table_fqn, size_bytes]
+          - from: analyze_query_patterns
+            select: [filter_columns, access_patterns]
+      output_schema:
+        type: object
+        required: [current_clustering, optimal_clustering, clustering_depth, recommendation]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 3: Check partitioning and pruning efficiency
+    - id: check_partitioning
+      mode: reason
+      instruction: |
+        Analyze micro-partition statistics for the table. Check total partitions,
+        average partition size, and pruning efficiency for common query patterns.
+        Determine if the table would benefit from re-partitioning.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query partition and pruning stats"
+      context:
+        static: [optimization_rules]
+        dynamic:
+          - from: identify_table
+            select: [table_fqn, storage_metrics]
+          - from: analyze_query_patterns
+            select: avg_prune_ratio
+      output_schema:
+        type: object
+        required: [total_partitions, avg_partition_size, pruning_efficiency, recommendation]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 4: Analyze materialization strategy
+    - id: analyze_materialization
+      mode: reason
+      instruction: |
+        Determine if the current materialization strategy is optimal.
+        Check if the table is managed by dbt (search for model file).
+        Consider: table vs incremental vs view, refresh frequency,
+        and whether the table is a good candidate for dynamic tables.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Check table type and refresh patterns"
+        - name: github_cli.search_code
+          instruction: "Search for dbt model definition for this table"
+      context:
+        static: [optimization_rules]
+        dynamic:
+          - from: identify_table
+            select: [table_fqn, row_count, size_bytes]
+          - from: analyze_query_patterns
+            select: query_count
+      output_schema:
+        type: object
+        required: [current_materialization, recommended_materialization, is_dbt_managed, rationale]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 8000
+
+    # Step 5: Show recommendations — DELEGATE
+    - id: show_recommendations
+      mode: execute
+      type: delegate
+      delegate: shift.show_plan
+      requires_approval: true
+      context:
+        dynamic:
+          - from: identify_table
+            select: [table_fqn, size_bytes, row_count]
+          - from: detect_load_frequency
+            select: [load_frequency, skip_clustering]
+          - from: analyze_query_patterns
+            select: [filter_columns, access_patterns]
+          - from: assess_clustering
+            select: recommendation
+          - from: check_partitioning
+            select: recommendation
+          - from: analyze_materialization
+            select: [recommended_materialization, rationale]
+
+    # Step 6: Generate optimization report with implementation SQL
+    - id: generate_report
+      mode: reason
+      instruction: |
+        Produce a structured optimization report including:
+        1. Current state summary (table size, clustering, partitioning, load frequency)
+        2. Recommendations with rationale
+        3. Expected improvement (scan reduction %, query speedup estimate)
+        4. Implementation SQL (ALTER TABLE for clustering, dbt config if managed)
+        5. Caveats and risks
+
+        CRITICAL: If detect_load_frequency reported skip_clustering = true (hourly/sub-hourly
+        loads), output strategy = SKIP with rationale explaining that hourly loads cause
+        constant micro-partition churn that undermines clustering.
+
+        SQL must be syntactically correct. If dbt-managed, include both ALTER TABLE
+        and dbt config change. Acknowledge trade-offs explicitly.
+      tools: []
+      context:
+        static: [clustering_guide, optimization_rules]
+        dynamic:
+          - from: identify_table
+          - from: detect_load_frequency
+          - from: analyze_query_patterns
+          - from: assess_clustering
+          - from: check_partitioning
+          - from: analyze_materialization
+      quality_criteria:
+        - "SQL is syntactically correct ALTER TABLE or dbt config"
+        - "Expected improvement is quantified"
+        - "Risks and caveats are acknowledged"
+        - "Strategy matches one of: SKIP, ORDER_BY, CLUSTER_BY, CLUSTER_BY_AND_SOS, MONITOR"
+      output_schema:
+        type: object
+        required: [strategy, report, implementation_sql, expected_improvement, caveats]
+        properties:
+          strategy:
+            type: string
+            enum: [SKIP, ORDER_BY, CLUSTER_BY, CLUSTER_BY_AND_SOS, MONITOR]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 15000
+
+    # Step 7: Apply changes — DELEGATE with approval gate
+    - id: apply_changes
+      mode: execute
+      type: delegate
+      delegate: shift.create_pr
+      requires_approval: true
+      context:
+        dynamic:
+          - from: identify_table
+            select: table_fqn
+          - from: generate_report
+            select: [strategy, implementation_sql]
+          - from: analyze_materialization
+            select: is_dbt_managed

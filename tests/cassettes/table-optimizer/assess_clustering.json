@@ -1,0 +1,22 @@
+{
+  "output": {
+    "current_clustering": null,
+    "optimal_clustering": ["EVENT_DATE", "VENUE_ID"],
+    "clustering_depth": 4.2,
+    "recommendation": "CLUSTER_BY on (EVENT_DATE, VENUE_ID) — depth 4.2 indicates poor natural ordering"
+  },
+  "decision_log": {
+    "decision": "Table has no clustering keys, depth 4.2 indicates poor ordering",
+    "rationale": "EVENT_DATE is most filtered (92%), VENUE_ID second (45%). Both have suitable cardinality.",
+    "alternatives_considered": [
+      {"option": "EVENT_DATE only", "reason": "Simpler but misses VENUE_ID point lookups"},
+      {"option": "Add SOS for VENUE_ID", "reason": "Viable but clustering alone may suffice"}
+    ],
+    "confidence": "high",
+    "informed_by": ["SYSTEM$CLUSTERING_INFORMATION", "query pattern analysis"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT SYSTEM$CLUSTERING_INFORMATION('DW.RPT.TRANSACTION')"}
+  ],
+  "token_usage": {"prompt": 1800, "completion": 600}
+}

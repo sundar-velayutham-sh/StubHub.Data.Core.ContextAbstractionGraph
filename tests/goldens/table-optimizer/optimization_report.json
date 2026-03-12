@@ -1,0 +1,5 @@
+{
+  "strategy": "CLUSTER_BY",
+  "table_fqn": "DW.RPT.TRANSACTION",
+  "implementation_sql": "ALTER TABLE DW.RPT.TRANSACTION CLUSTER BY (EVENT_DATE, VENUE_ID);"
+}

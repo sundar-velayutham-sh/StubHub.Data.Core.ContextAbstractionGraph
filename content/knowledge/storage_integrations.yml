@@ -1,0 +1,23 @@
+knowledge:
+  id: storage_integrations
+  domain: infrastructure
+  description: "Azure blob and S3 storage integration patterns for Snowflake"
+  guidance:
+    - "Prod and dev use different storage integrations — always verify environment"
+    - "Azure blob: use AZURE_SAS_TOKEN or storage integration object"
+    - "S3: use storage integration with IAM role (not access keys)"
+    - "File format must match source — CSV, JSON, Parquet, Avro"
+    - "Always set COMPRESSION = AUTO for flexibility"
+  azure_patterns:
+    stage_url: "azure://{account}.blob.core.windows.net/{container}/{path}"
+    integration_name: "{ENV}_AZURE_INTEGRATION"
+    file_format: "TYPE = PARQUET for columnar, TYPE = JSON for semi-structured"
+  s3_patterns:
+    stage_url: "s3://{bucket}/{prefix}/"
+    integration_name: "{ENV}_S3_INTEGRATION"
+  best_practices:
+    - "Use STORAGE_INTEGRATION instead of credentials in stage definition"
+    - "Partition blob paths by date: /{year}/{month}/{day}/"
+    - "Set AUTO_REFRESH = TRUE for automatic pipe ingestion"
+    - "Monitor pipe with SYSTEM$PIPE_STATUS"
+    - "Use MATCH_BY_COLUMN_NAME for schema-flexible Parquet loads"

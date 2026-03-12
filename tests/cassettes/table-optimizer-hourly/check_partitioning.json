@@ -1,0 +1,17 @@
+{
+  "output": {
+    "total_partitions": 4200,
+    "avg_partition_size": 1476190,
+    "pruning_efficiency": 0.42,
+    "recommendation": "Moderate pruning — would improve with clustering but load frequency prevents it"
+  },
+  "decision_log": {
+    "decision": "Pruning at 42% — moderate",
+    "rationale": "Not great but not terrible. Clustering would help but load churn makes it pointless.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["partition statistics"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1000, "completion": 200}
+}

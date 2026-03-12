@@ -1,0 +1,17 @@
+{
+  "output": {
+    "current_materialization": "table",
+    "recommended_materialization": "table",
+    "is_dbt_managed": true,
+    "rationale": "Full-refresh table materialization running sub-hourly. Consider incremental if possible to reduce load cost."
+  },
+  "decision_log": {
+    "decision": "Keep table materialization — sub-hourly full refresh",
+    "rationale": "Model is full-refresh (table materialization). Each run rebuilds the entire table, destroying any clustering.",
+    "alternatives_considered": [{"option": "Switch to incremental", "reason": "Would reduce load cost but requires unique_key analysis"}],
+    "confidence": "high",
+    "informed_by": ["github_cli.search_code"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1400, "completion": 300}
+}

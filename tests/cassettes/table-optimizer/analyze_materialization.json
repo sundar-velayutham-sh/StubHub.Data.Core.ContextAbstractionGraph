@@ -1,0 +1,19 @@
+{
+  "output": {
+    "current_materialization": "incremental",
+    "recommended_materialization": "incremental",
+    "is_dbt_managed": true,
+    "rationale": "Table is dbt-managed incremental model in Astronomer repo. Incremental is correct for 150M rows with daily appends."
+  },
+  "decision_log": {
+    "decision": "Keep incremental materialization, add cluster_by to dbt config",
+    "rationale": "Table is already incremental in dbt. Clustering should be added via model config, not ALTER TABLE.",
+    "alternatives_considered": [{"option": "ALTER TABLE directly", "reason": "Would work but dbt would overwrite on next full refresh"}],
+    "confidence": "high",
+    "informed_by": ["github_cli.search_code", "dbt model config"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.search_code", "input": "TRANSACTION in:path models/ extension:sql"}
+  ],
+  "token_usage": {"prompt": 1400, "completion": 400}
+}

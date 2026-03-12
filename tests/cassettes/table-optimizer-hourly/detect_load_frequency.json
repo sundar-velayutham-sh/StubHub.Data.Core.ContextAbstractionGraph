@@ -1,0 +1,23 @@
+{
+  "output": {
+    "load_frequency": "SUB_HOURLY",
+    "avg_runs_per_day": 41.8,
+    "skip_clustering": true,
+    "is_dbt_managed": true,
+    "tags": ["seller_ffl", "sub_hourly"],
+    "rationale": "Table tagged as 'sub_hourly' in dbt model config. 41.8 runs/day confirms sub-hourly schedule. Clustering would be constantly undermined by load churn — credits wasted."
+  },
+  "decision_log": {
+    "decision": "SUB_HOURLY load frequency — skip clustering",
+    "rationale": "DBT_MODELS.TAGS contains 'sub_hourly'. DBT_RUN_RESULTS shows 41.8 runs/day. Each load disrupts micro-partition ordering, making clustering counterproductive.",
+    "alternatives_considered": [
+      {"option": "Cluster anyway", "reason": "Hourly churn would undo clustering within minutes — net negative ROI"}
+    ],
+    "confidence": "high",
+    "informed_by": ["DW.DATAOPS_DBT.DBT_MODELS", "DW.DATAOPS_DBT.DBT_RUN_RESULTS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT m.NAME, m.TAGS, ... FROM DW.DATAOPS_DBT.DBT_MODELS m LEFT JOIN DW.DATAOPS_DBT.DBT_RUN_RESULTS rr ON ..."}
+  ],
+  "token_usage": {"prompt": 1000, "completion": 300}
+}

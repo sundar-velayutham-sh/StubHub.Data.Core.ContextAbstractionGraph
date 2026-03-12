@@ -1,0 +1,17 @@
+{
+  "output": {
+    "total_partitions": 8500,
+    "avg_partition_size": 1470588,
+    "pruning_efficiency": 0.35,
+    "recommendation": "Poor pruning (35%) — clustering should improve to 80%+"
+  },
+  "decision_log": {
+    "decision": "Pruning efficiency is poor at 35%",
+    "rationale": "8500 partitions with only 35% pruning means most queries scan too many partitions",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["partition statistics", "query history prune ratios"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1200, "completion": 300}
+}

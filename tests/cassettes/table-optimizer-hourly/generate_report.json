@@ -1,0 +1,49 @@
+{
+  "output": {
+    "strategy": "SKIP",
+    "report": {
+      "current_state": {
+        "table": "DW.RPT.TRANSACTION_COUPON_FACT",
+        "size_gb": 6.2,
+        "rows": 85000000,
+        "clustering": "None",
+        "pruning_efficiency": "42%",
+        "load_frequency": "SUB_HOURLY (41.8 runs/day)"
+      },
+      "recommendation": "SKIP clustering — sub-hourly loads make clustering counterproductive",
+      "rationale": "This table runs 41.8 times per day (sub-hourly) as a full-refresh table materialization. Each load rebuilds the table entirely, destroying any clustering applied. Automatic re-clustering would run continuously but never catch up, wasting credits with no performance benefit.",
+      "expected_improvement": {
+        "scan_reduction_pct": 0,
+        "estimated_query_speedup": "None — clustering credits would be wasted"
+      },
+      "alternative_recommendations": [
+        "Consider switching to incremental materialization to reduce load cost",
+        "If load frequency can be reduced to daily, re-evaluate clustering",
+        "Consider SOS (Search Optimization Service) for TRANSACTION_ID point lookups — SOS is load-frequency-agnostic"
+      ]
+    },
+    "implementation_sql": "-- No clustering changes recommended. Table loads sub-hourly.",
+    "expected_improvement": {
+      "scan_reduction_pct": 0,
+      "estimated_query_speedup": "None"
+    },
+    "caveats": [
+      "Sub-hourly full-refresh loads destroy clustering on every run",
+      "Automatic re-clustering would consume credits with zero net benefit",
+      "If load schedule changes to daily, clustering should be re-evaluated",
+      "SOS for point lookups is unaffected by load frequency — consider separately"
+    ]
+  },
+  "decision_log": {
+    "decision": "SKIP — sub-hourly load frequency makes clustering counterproductive",
+    "rationale": "41.8 runs/day as full-refresh table. Clustering would be destroyed on every load. Credits wasted.",
+    "alternatives_considered": [
+      {"option": "CLUSTER_BY anyway", "reason": "Would be undone every ~35 minutes — net negative ROI"},
+      {"option": "MONITOR", "reason": "No ambiguity — sub-hourly full-refresh is a clear SKIP"}
+    ],
+    "confidence": "high",
+    "informed_by": ["detect_load_frequency output", "all prior analysis"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 3500, "completion": 900}
+}

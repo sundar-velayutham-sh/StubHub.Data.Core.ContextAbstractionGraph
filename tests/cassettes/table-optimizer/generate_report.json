@@ -1,0 +1,47 @@
+{
+  "output": {
+    "strategy": "CLUSTER_BY",
+    "report": {
+      "current_state": {
+        "table": "DW.RPT.TRANSACTION",
+        "size_gb": 12.5,
+        "rows": 150000000,
+        "clustering": "None",
+        "pruning_efficiency": "35%"
+      },
+      "recommendation": "Add CLUSTER BY (EVENT_DATE, VENUE_ID) via dbt model config",
+      "rationale": "92% of queries filter on EVENT_DATE (range scans), 45% on VENUE_ID (point lookups). Current pruning at 35% — clustering should improve to 80%+.",
+      "expected_improvement": {
+        "scan_reduction_pct": 55,
+        "estimated_query_speedup": "2-3x for date-filtered queries"
+      },
+      "risks": [
+        "Initial clustering will consume compute credits",
+        "Ongoing maintenance cost for incremental loads"
+      ]
+    },
+    "implementation_sql": "ALTER TABLE DW.RPT.TRANSACTION CLUSTER BY (EVENT_DATE, VENUE_ID);",
+    "expected_improvement": {
+      "scan_reduction_pct": 55,
+      "estimated_query_speedup": "2-3x"
+    },
+    "caveats": [
+      "Since table is dbt-managed, prefer adding cluster_by to dbt model config",
+      "ALTER TABLE will work but may be overwritten on next full refresh",
+      "Monitor AUTOMATIC_CLUSTERING_HISTORY for maintenance credit usage"
+    ]
+  },
+  "decision_log": {
+    "decision": "CLUSTER_BY strategy with EVENT_DATE, VENUE_ID",
+    "rationale": "Clear filter pattern dominance, large table, poor current pruning",
+    "alternatives_considered": [
+      {"option": "SKIP", "reason": "Table is large enough to benefit"},
+      {"option": "CLUSTER_BY_AND_SOS", "reason": "SOS would help VENUE_ID but clustering alone may suffice"},
+      {"option": "MONITOR", "reason": "Patterns are clear enough to act now"}
+    ],
+    "confidence": "high",
+    "informed_by": ["all prior analysis steps"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 3000, "completion": 800}
+}

@@ -1,0 +1,23 @@
+{
+  "output": {
+    "load_frequency": "DAILY",
+    "avg_runs_per_day": 3.0,
+    "skip_clustering": false,
+    "is_dbt_managed": true,
+    "tags": ["core", "daily"],
+    "rationale": "Table tagged as 'daily' in dbt model config. 3 runs/day matches daily schedule with retries. Safe to cluster."
+  },
+  "decision_log": {
+    "decision": "DAILY load frequency — clustering is safe",
+    "rationale": "DBT_MODELS.TAGS contains 'daily'. DBT_RUN_RESULTS shows avg 3 runs/day (consistent with daily + retries). No hourly churn risk.",
+    "alternatives_considered": [
+      {"option": "Flag as HOURLY based on 3 runs/day", "reason": "3 runs/day is well below 12 threshold — clearly daily"}
+    ],
+    "confidence": "high",
+    "informed_by": ["DW.DATAOPS_DBT.DBT_MODELS", "DW.DATAOPS_DBT.DBT_RUN_RESULTS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT m.NAME, m.MATERIALIZATION, m.TAGS, COUNT(rr.MODEL_EXECUTION_ID) as run_count_7d, ROUND(COUNT(rr.MODEL_EXECUTION_ID) / NULLIF(COUNT(DISTINCT DATE_TRUNC('DAY', rr.CREATED_AT)), 0), 1) as avg_runs_per_day FROM DW.DATAOPS_DBT.DBT_MODELS m LEFT JOIN DW.DATAOPS_DBT.DBT_RUN_RESULTS rr ON rr.NAME = m.NAME AND rr.CREATED_AT >= DATEADD('day', -7, CURRENT_TIMESTAMP()) AND rr.STATUS = 'success' AND rr.RESOURCE_TYPE = 'model' WHERE UPPER(m.DATABASE_NAME || '.' || m.SCHEMA_NAME || '.' || m.NAME) = 'DW.RPT.TRANSACTION' GROUP BY 1,2,3"}
+  ],
+  "token_usage": {"prompt": 1000, "completion": 300}
+}

@@ -1,0 +1,27 @@
+{
+  "output": {
+    "table_fqn": "DW.RPT.TRANSACTION_COUPON_FACT",
+    "row_count": 85000000,
+    "size_bytes": 6200000000,
+    "columns": [
+      {"name": "TRANSACTION_ID", "type": "NUMBER(38,0)"},
+      {"name": "COUPON_ID", "type": "NUMBER(38,0)"},
+      {"name": "EVENT_DATE", "type": "TIMESTAMP_NTZ"},
+      {"name": "COUPON_AMOUNT", "type": "NUMBER(18,2)"}
+    ],
+    "storage_metrics": {
+      "active_bytes": 6200000000,
+      "time_travel_bytes": 1200000000,
+      "failsafe_bytes": 6200000000
+    }
+  },
+  "decision_log": {
+    "decision": "Found table DW.RPT.TRANSACTION_COUPON_FACT",
+    "rationale": "Table exists, 85M rows, ~6.2GB active",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["INFORMATION_SCHEMA.TABLES"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1200, "completion": 400}
+}
