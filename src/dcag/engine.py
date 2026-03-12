@@ -39,7 +39,6 @@ class DCAGEngine:
         self._persona_loader = PersonaLoader(self._content_dir / "personas")
         self._knowledge_loader = KnowledgeLoader(self._content_dir / "knowledge")
         self._workflow_loader = WorkflowLoader(self._content_dir / "workflows")
-        self._assembler = ContextAssembler(self._persona_loader, self._knowledge_loader)
 
     def start(self, workflow_id: str, inputs: dict[str, Any]) -> WorkflowRun:
         """Start a new workflow run."""
@@ -47,14 +46,17 @@ class DCAGEngine:
         persona = self._persona_loader.load(workflow.persona)
         run_id = f"dcag-{uuid.uuid4().hex[:8]}"
         config_hash = self._hash_content()
+        registry = ToolRegistry()
+        assembler = ContextAssembler(self._persona_loader, self._knowledge_loader, registry)
 
         return WorkflowRun(
             run_id=run_id,
             workflow=workflow,
             persona=persona,
             inputs=inputs,
-            assembler=self._assembler,
+            assembler=assembler,
             config_hash=config_hash,
+            registry=registry,
         )
 
     def list_workflows(self) -> list[ManifestEntry]:
@@ -80,6 +82,7 @@ class WorkflowRun:
         inputs: dict[str, Any],
         assembler: ContextAssembler,
         config_hash: str,
+        registry: ToolRegistry | None = None,
     ):
         self._run_id = run_id
         self._workflow = workflow
@@ -92,7 +95,7 @@ class WorkflowRun:
         self._trace = TraceWriter(run_id, Path(tempfile.gettempdir()) / "dcag-runs")
         self._trace.record_start(workflow.id, inputs, config_hash)
         self._step_start_time: float = 0
-        self._registry = ToolRegistry()  # Shift suggestion #2: auto-populated by step 0
+        self._registry = registry or ToolRegistry()
 
     @property
     def run_id(self) -> str:
@@ -179,9 +182,12 @@ class WorkflowRun:
                 duration_ms=duration_ms, output=outcome.output,
             )
 
-            # Shift suggestion #2: auto-populate ToolRegistry from step 0 output
-            if step_id == "setup_dbt_project" and isinstance(outcome.output, dict):
-                self._registry.update_capabilities(outcome.output)
+            # Auto-populate ToolRegistry from any execute/script step
+            # that reports capability fields
+            if step.mode == "execute" and step.execute_type == "script" and isinstance(outcome.output, dict):
+                capability_keys = {"dbt_available", "dbt_mcp_available", "github_available", "fallback_mode"}
+                if capability_keys & outcome.output.keys():
+                    self._registry.update_capabilities(outcome.output)
 
             self._walker.advance()
 
