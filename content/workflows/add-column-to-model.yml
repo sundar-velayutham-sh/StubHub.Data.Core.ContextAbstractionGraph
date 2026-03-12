@@ -25,7 +25,7 @@ workflow:
       fallback_on_failure: snowflake_only
       output_schema:
         type: object
-        required: [dbt_project_path, dbt_available, dbt_mcp_available, fallback_mode]
+        required: [dbt_project_path, dbt_available, dbt_mcp_available, github_available, fallback_mode]
 
     # Step 1: Resolve Model — find model SQL + sources.yml + resolve source table FQN
     - id: resolve_model
@@ -36,6 +36,9 @@ workflow:
         and sources.yml via GitHub CLI to get existing columns and source definition.
         Also map the dbt source reference to a fully-qualified Snowflake table name —
         read sources.yml to get database/schema, then verify the table exists in Snowflake.
+        DEGRADED MODE: If dbt and GitHub tools are not available, use Snowflake
+        INFORMATION_SCHEMA.COLUMNS to discover the table structure directly.
+        Report source_table_fqn from the input or by searching INFORMATION_SCHEMA.TABLES.
       tools:
         - name: dbt_mcp.get_node_details_dev
           instruction: "Look up model metadata in dbt project"
@@ -136,6 +139,8 @@ workflow:
         Check what models depend on this model. Use dbt_mcp.get_lineage_dev first,
         fall back to GitHub code search for ref() patterns if lineage unavailable.
         Assess SELECT * risk and overall impact level.
+        DEGRADED MODE: If neither dbt nor GitHub tools are available, report
+        impact_level as "unknown" and recommend manual downstream review.
       tools:
         - name: dbt_mcp.get_lineage_dev
           instruction: "Get downstream lineage for the model"
@@ -182,6 +187,8 @@ workflow:
         Infer the existing coding style (uppercase/lowercase, indentation, column ordering).
         Place the new column near related columns, not at the end.
         Output the complete modified file content — not a diff or partial snippet.
+        DEGRADED MODE: If the file cannot be read (GitHub tools unavailable),
+        reconstruct the SQL from existing_columns (Step 1) using standard dbt CTE pattern.
       tools:
         - name: github_cli.read_file
           instruction: "Read the current model SQL file"
@@ -211,6 +218,8 @@ workflow:
         Read the existing schema.yml and add the column entry.
         Include appropriate tests (not_null if column is non-nullable, unique if PK).
         Write a clear description. Output the column entry YAML.
+        DEGRADED MODE: If the file cannot be read (GitHub tools unavailable),
+        generate a standalone column entry YAML block based on column_info from Step 2.
       tools:
         - name: github_cli.read_file
           instruction: "Read the current schema.yml file to get existing column entries and formatting"

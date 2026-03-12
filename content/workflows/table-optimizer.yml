@@ -147,6 +147,9 @@ workflow:
         Compare current clustering keys (if any) against the optimal keys suggested
         by query pattern analysis. Report clustering depth, overlap, and whether
         re-clustering would improve performance.
+        NOTE: SYSTEM$CLUSTERING_INFORMATION will throw an error if the table is not
+        currently clustered. This is expected — catch the error and report
+        current_clustering as NONE, then proceed with your recommendation.
       tools:
         - name: snowflake_mcp.execute_query
           instruction: "Run SYSTEM$CLUSTERING_INFORMATION and check current cluster keys"
