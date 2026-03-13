@@ -1,0 +1,21 @@
+{
+  "output": {
+    "manual_dml_found": false,
+    "manual_dml_count": 0,
+    "diagnostic_queries_found": false,
+    "remediation_user": null,
+    "remediation_actions": [],
+    "prior_remediation_summary": "No manual interventions found on this table in the last 14 days."
+  },
+  "decision_log": {
+    "decision": "No prior manual remediation detected",
+    "rationale": "QUERY_HISTORY shows no DELETE/UPDATE by human users on this table",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT QUERY_TYPE, USER_NAME... WHERE QUERY_TYPE IN ('DELETE', 'UPDATE')"}
+  ],
+  "token_usage": {"prompt": 1200, "completion": 300}
+}

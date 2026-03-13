@@ -1,0 +1,28 @@
+{
+  "output": {
+    "manual_dml_found": true,
+    "manual_dml_count": 5,
+    "diagnostic_queries_found": true,
+    "remediation_user": "COLE.ROMANO@STUBHUB.COM",
+    "remediation_actions": [
+      {"type": "UPDATE", "time": "2026-03-07T15:10:06", "detail": "Updated valid_to on session 55cc2bbb"},
+      {"type": "DELETE", "time": "2026-03-07T15:10:34", "detail": "Deleted session 5b2e23f2"},
+      {"type": "UPDATE", "time": "2026-03-07T15:12:54", "detail": "Updated valid_to on session ade1fbaf"},
+      {"type": "UPDATE", "time": "2026-03-07T15:13:03", "detail": "Updated valid_to on session 4475329a"},
+      {"type": "DELETE", "time": "2026-03-07T15:13:18", "detail": "Deleted session 4475329a"}
+    ],
+    "prior_remediation_summary": "COLE.ROMANO@STUBHUB.COM manually ran 3 UPDATEs + 2 DELETEs on this table on 2026-03-07 around 15:10-15:13 UTC. Also ran 5 diagnostic SELECT queries at 22:09-22:25 investigating identity resolution paths. Previous resolution required manual row cleanup — retry alone will NOT fix this."
+  },
+  "decision_log": {
+    "decision": "Prior manual remediation detected — retry insufficient",
+    "rationale": "QUERY_HISTORY shows 5 manual DML operations by Cole Romano on 2026-03-07, the last time this alert fired",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT QUERY_TYPE, USER_NAME... WHERE QUERY_TYPE IN ('DELETE', 'UPDATE')"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT USER_NAME... WHERE QUERY_TYPE = 'SELECT' AND QUERY_TEXT ILIKE '%GROUP BY%HAVING%'"}
+  ],
+  "token_usage": {"prompt": 1500, "completion": 500}
+}

@@ -27,6 +27,7 @@ CONTENT_DIR = Path(__file__).parent.parent / "content"
 CODE_ERROR_STEPS = [
     "parse_alert",
     "check_failure_history",
+    "check_prior_remediation",
     "check_cascade",
     "get_model_context",
     "classify_alert",
@@ -40,6 +41,7 @@ CODE_ERROR_STEPS = [
 DATA_ISSUE_STEPS = [
     "parse_alert",
     "check_failure_history",
+    "check_prior_remediation",
     "check_cascade",
     "get_model_context",
     "classify_alert",
@@ -53,6 +55,7 @@ DATA_ISSUE_STEPS = [
 INFRASTRUCTURE_STEPS = [
     "parse_alert",
     "check_failure_history",
+    "check_prior_remediation",
     "check_cascade",
     "get_model_context",
     "classify_alert",
@@ -66,6 +69,7 @@ INFRASTRUCTURE_STEPS = [
 KNOWN_ISSUE_STEPS = [
     "parse_alert",
     "check_failure_history",
+    "check_prior_remediation",
     "check_cascade",
     "get_model_context",
     "classify_alert",
@@ -140,7 +144,7 @@ class TestTriageCodeError:
 
     def test_code_error_path_has_9_steps(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
-        assert len(steps_executed) == 9
+        assert len(steps_executed) == 10
 
     def test_classify_returns_invalid_identifier(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
@@ -199,7 +203,7 @@ class TestTriageDataIssue:
 
     def test_data_issue_path_has_9_steps(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
-        assert len(steps_executed) == 9
+        assert len(steps_executed) == 10
 
     def test_classify_returns_duplicate_row(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
@@ -224,6 +228,12 @@ class TestTriageDataIssue:
     def test_affected_row_count_present(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
         assert reason_outputs["diagnose_data_issue"]["affected_row_count"] == 436168
+
+    def test_manual_dml_found_in_prior_remediation(self):
+        _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
+        assert reason_outputs["check_prior_remediation"]["manual_dml_found"] is True
+        assert reason_outputs["check_prior_remediation"]["manual_dml_count"] == 5
+        assert reason_outputs["check_prior_remediation"]["remediation_user"] == "COLE.ROMANO@STUBHUB.COM"
 
     def test_skips_other_diagnose_steps(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
@@ -253,7 +263,7 @@ class TestTriageInfrastructure:
 
     def test_infrastructure_path_has_9_steps(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
-        assert len(steps_executed) == 9
+        assert len(steps_executed) == 10
 
     def test_classify_returns_internal_error(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
@@ -302,7 +312,7 @@ class TestTriageKnownIssue:
 
     def test_known_issue_path_has_9_steps(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)
-        assert len(steps_executed) == 9
+        assert len(steps_executed) == 10
 
     def test_classify_returns_recurring_transient(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, self.REASON_STEPS)

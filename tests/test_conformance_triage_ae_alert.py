@@ -53,6 +53,7 @@ class TestTriageAeAlertConformance:
         code_error_path = [
             "parse_alert",
             "check_failure_history",
+            "check_prior_remediation",
             "check_cascade",
             "get_model_context",
             "classify_alert",
@@ -77,6 +78,14 @@ class TestTriageAeAlertConformance:
                 "first_failure": "2026-03-03",
                 "last_success": "2026-03-02",
                 "pattern": "recurring",
+            },
+            "check_prior_remediation": {
+                "manual_dml_found": False,
+                "manual_dml_count": 0,
+                "diagnostic_queries_found": False,
+                "remediation_user": None,
+                "remediation_actions": [],
+                "prior_remediation_summary": "No manual interventions found on this table in the last 14 days.",
             },
             "check_cascade": {
                 "is_cascade": False,

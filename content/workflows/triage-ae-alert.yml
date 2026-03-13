@@ -77,7 +77,75 @@ workflow:
         max_llm_turns: 3
         max_tokens: 8000
 
-    # Step 2: Check for cascade failures in the same timeframe
+    # Step 2: Check Prior Remediation — was manual cleanup needed last time?
+    - id: check_prior_remediation
+      mode: reason
+      instruction: |
+        Check Snowflake QUERY_HISTORY for manual interventions on this table
+        around previous failure dates. Look for:
+        1. DELETE, UPDATE, or MERGE operations by human users (not service accounts)
+           on the failing table or its schema in the last 14 days
+        2. Diagnostic SELECT queries with GROUP BY, HAVING, COUNT, or duplicate-finding
+           patterns by human users
+        Filter out service accounts: ORCHESTRATION_PROD, TRANSFORM_USER,
+        STUBHUB_DATAMIGRATOR_PROD, LOADING_USER, DBT_CI__CORE_DATA, DBT_CLOUD_PROD.
+        If manual DML was found, this is critical context: it means the previous
+        resolution required manual row cleanup and a simple retry will NOT fix it.
+        Report who did it, what they did, and when.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query ACCOUNT_USAGE.QUERY_HISTORY for manual DML and diagnostic queries on the failing table"
+          usage_pattern: |
+            1. Manual DML:
+               SELECT QUERY_TYPE, USER_NAME, START_TIME,
+                      SUBSTR(QUERY_TEXT, 1, 300) as query_preview
+               FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+               WHERE QUERY_TEXT ILIKE '%{table_name}%'
+                 AND QUERY_TYPE IN ('DELETE', 'UPDATE', 'MERGE')
+                 AND USER_NAME NOT IN ('ORCHESTRATION_PROD', 'TRANSFORM_USER',
+                     'STUBHUB_DATAMIGRATOR_PROD', 'LOADING_USER', 'DBT_CI__CORE_DATA')
+                 AND START_TIME >= DATEADD(day, -14, CURRENT_TIMESTAMP())
+               ORDER BY START_TIME DESC LIMIT 10
+            2. Diagnostic SELECTs:
+               SELECT USER_NAME, START_TIME,
+                      SUBSTR(QUERY_TEXT, 1, 300) as query_preview
+               FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+               WHERE QUERY_TEXT ILIKE '%{table_name}%'
+                 AND QUERY_TYPE = 'SELECT'
+                 AND (QUERY_TEXT ILIKE '%GROUP BY%HAVING%'
+                      OR QUERY_TEXT ILIKE '%COUNT(*)%'
+                      OR QUERY_TEXT ILIKE '%duplicate%')
+                 AND USER_NAME NOT IN ('ORCHESTRATION_PROD', 'TRANSFORM_USER')
+                 AND START_TIME >= DATEADD(day, -14, CURRENT_TIMESTAMP())
+               ORDER BY START_TIME DESC LIMIT 10
+      context:
+        static: [on_call_conventions]
+        dynamic:
+          - from: parse_alert
+            select: model_name
+          - from: check_failure_history
+            select: [is_recurring, first_failure]
+      output_schema:
+        type: object
+        required: [manual_dml_found, manual_dml_count, prior_remediation_summary]
+        properties:
+          manual_dml_found:
+            type: boolean
+          manual_dml_count:
+            type: integer
+          diagnostic_queries_found:
+            type: boolean
+          remediation_user:
+            type: string
+          remediation_actions:
+            type: array
+          prior_remediation_summary:
+            type: string
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 3: Check for cascade failures in the same timeframe
     - id: check_cascade
       mode: reason
       instruction: |
@@ -110,7 +178,7 @@ workflow:
         max_llm_turns: 3
         max_tokens: 8000
 
-    # Step 3: Get model context — SQL, owner, lineage, recent commits
+    # Step 4: Get model context — SQL, owner, lineage, recent commits
     - id: get_model_context
       mode: reason
       instruction: |
@@ -144,7 +212,7 @@ workflow:
         max_llm_turns: 5
         max_tokens: 12000
 
-    # Step 4: Classify alert type — BRANCHING STEP
+    # Step 5: Classify alert type — BRANCHING STEP
     - id: classify_alert
       mode: reason
       instruction: |
@@ -178,6 +246,8 @@ workflow:
         dynamic:
           - from: parse_alert
           - from: check_failure_history
+          - from: check_prior_remediation
+            select: [manual_dml_found, prior_remediation_summary]
           - from: check_cascade
           - from: get_model_context
       output_schema:
@@ -211,7 +281,7 @@ workflow:
           goto: diagnose_infrastructure
         - default: diagnose_known_issue
 
-    # Step 5a: Diagnose code errors
+    # Step 6a: Diagnose code errors
     - id: diagnose_code_error
       mode: reason
       instruction: |
@@ -259,7 +329,7 @@ workflow:
       transitions:
         - default: determine_resolution
 
-    # Step 5b: Diagnose data issues
+    # Step 6b: Diagnose data issues
     - id: diagnose_data_issue
       mode: reason
       instruction: |
@@ -304,7 +374,7 @@ workflow:
       transitions:
         - default: determine_resolution
 
-    # Step 5c: Diagnose infrastructure issues
+    # Step 6c: Diagnose infrastructure issues
     - id: diagnose_infrastructure
       mode: reason
       instruction: |
@@ -348,7 +418,7 @@ workflow:
       transitions:
         - default: determine_resolution
 
-    # Step 5d: Diagnose known issues
+    # Step 6d: Diagnose known issues
     - id: diagnose_known_issue
       mode: reason
       instruction: |
@@ -395,7 +465,7 @@ workflow:
       transitions:
         - default: determine_resolution
 
-    # Step 6: Determine resolution path
+    # Step 7: Determine resolution path
     - id: determine_resolution
       mode: reason
       instruction: |
@@ -416,6 +486,7 @@ workflow:
         static: [on_call_conventions]
         dynamic:
           - from: classify_alert
+          - from: check_prior_remediation
           - from: check_cascade
           - from: get_model_context
       output_schema:
@@ -425,7 +496,7 @@ workflow:
         max_llm_turns: 2
         max_tokens: 8000
 
-    # Step 7: Generate triage report (thread summary + detailed investigation)
+    # Step 8: Generate triage report (thread summary + detailed investigation)
     - id: generate_triage_report
       mode: reason
       instruction: |
@@ -456,6 +527,7 @@ workflow:
         dynamic:
           - from: parse_alert
           - from: check_failure_history
+          - from: check_prior_remediation
           - from: check_cascade
           - from: get_model_context
           - from: classify_alert
@@ -467,7 +539,7 @@ workflow:
         max_llm_turns: 2
         max_tokens: 20000
 
-    # Step 8: Post triage report to Slack thread
+    # Step 9: Post triage report to Slack thread
     - id: post_to_thread
       mode: execute
       delegate: shift.show_plan

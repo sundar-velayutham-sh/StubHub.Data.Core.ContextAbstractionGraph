@@ -21,6 +21,17 @@ conformance:
         - parse_alert
       has_instruction: true
 
+    check_prior_remediation:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      tools_count: 1
+      has_instruction: true
+      dynamic_refs_from:
+        - parse_alert
+        - check_failure_history
+
     check_cascade:
       type: ReasonRequest
       persona: analytics_engineer
@@ -53,6 +64,7 @@ conformance:
       dynamic_refs_from:
         - parse_alert
         - check_failure_history
+        - check_prior_remediation
         - check_cascade
         - get_model_context
       has_instruction: true
@@ -119,6 +131,7 @@ conformance:
         - on_call_conventions
       dynamic_refs_from:
         - classify_alert
+        - check_prior_remediation
         - check_cascade
         - get_model_context
       has_instruction: true
@@ -130,6 +143,7 @@ conformance:
       dynamic_refs_from:
         - parse_alert
         - check_failure_history
+        - check_prior_remediation
         - check_cascade
         - get_model_context
         - classify_alert
