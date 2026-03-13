@@ -1,0 +1,177 @@
+workflow:
+  id: generate-schema-yml
+  name: Generate schema.yml for dbt Model
+  persona: analytics_engineer
+
+  inputs:
+    model_name:
+      type: string
+      required: true
+    source_table:
+      type: string
+      required: false
+
+  steps:
+    # Step 0: Resolve Model — find model SQL file, get path
+    - id: resolve_model
+      mode: reason
+      instruction: |
+        Find the dbt model file for the given model name.
+        Use dbt_mcp.get_node_details_dev to locate the model, then search for the
+        SQL file path via GitHub CLI. Also resolve the source table FQN — either
+        from the input or by reading sources.yml to get database/schema and verifying
+        against Snowflake INFORMATION_SCHEMA.
+        Output the model_path, source_table_fqn, and the existing schema.yml path
+        (if one exists already).
+      tools:
+        - name: dbt_mcp.get_node_details_dev
+          instruction: "Look up model metadata in dbt project"
+        - name: github_cli.search_code
+          instruction: "Search for model SQL file in the Astronomer repo"
+        - name: snowflake_mcp.execute_query
+          instruction: "Verify source table exists in INFORMATION_SCHEMA"
+      context:
+        static: [dbt_project_structure]
+        dynamic: []
+      output_schema:
+        type: object
+        required: [model_path, source_table_fqn, existing_schema_yml_path]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 1: Parse Columns — extract SELECT columns from model SQL
+    - id: parse_columns
+      mode: reason
+      instruction: |
+        Read the model SQL file and parse the SELECT columns.
+        Extract column names, any aliases, and source references (ref/source).
+        Identify the final SELECT statement (after CTEs) to get the output columns.
+        For each column, note whether it is a simple passthrough, renamed, or computed.
+      tools:
+        - name: github_cli.read_file
+          instruction: "Read the model SQL file to extract column definitions"
+      context:
+        static: []
+        dynamic:
+          - from: resolve_model
+            select: model_path
+      output_schema:
+        type: object
+        required: [columns, cte_count, has_star_select]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 2: Describe Columns — get types, nullability, samples from Snowflake
+    - id: describe_columns
+      mode: reason
+      instruction: |
+        Query Snowflake for detailed column metadata: data types, nullability,
+        and sample values. Use INFORMATION_SCHEMA.COLUMNS for type info and
+        run sample queries for value distribution.
+        Map Snowflake types to human-readable descriptions.
+        Flag any columns that are always NULL or have suspicious patterns.
+      tools:
+        - name: snowflake_mcp.describe_table
+          instruction: "Get column types and nullability from INFORMATION_SCHEMA"
+        - name: snowflake_mcp.execute_query
+          instruction: "Sample values and check null rates per column"
+      context:
+        static: [sf_type_mapping, naming_conventions]
+        dynamic:
+          - from: parse_columns
+            select: columns
+          - from: resolve_model
+            select: source_table_fqn
+      output_schema:
+        type: object
+        required: [column_metadata]
+        properties:
+          column_metadata:
+            type: array
+            items:
+              type: object
+              required: [name, sf_type, nullable, null_pct, sample_values]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 3: Generate YML — produce schema.yml content
+    - id: generate_yml
+      mode: reason
+      instruction: |
+        Generate the complete schema.yml content for this model.
+        Include:
+        1. Model-level description
+        2. Column entries with:
+           - name (snake_case)
+           - description (clear, business-friendly)
+           - tests: not_null for non-nullable columns, unique for PK columns,
+             accepted_values where appropriate
+        3. Follow existing schema.yml conventions in the project
+        Output the full YAML content as a string, plus a summary of tests added.
+      tools: []
+      context:
+        static: [naming_conventions]
+        dynamic:
+          - from: describe_columns
+            select: column_metadata
+          - from: parse_columns
+            select: columns
+          - from: resolve_model
+            select: [model_path, existing_schema_yml_path]
+      anti_patterns:
+        - "Don't skip descriptions — every column must have one"
+        - "Don't use generic descriptions like 'The X column' — be specific"
+        - "Don't forget tests for primary key columns"
+      quality_criteria:
+        - "Every column has a non-empty description"
+        - "PK columns have not_null + unique tests"
+        - "YAML is valid and properly indented"
+      output_schema:
+        type: object
+        required: [schema_yml_content, tests_added, column_count]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 15000
+
+    # Step 4: Validate — dbt parse to verify YAML is correct
+    - id: validate
+      mode: reason
+      instruction: |
+        Validate the generated schema.yml by running dbt parse and dbt compile.
+        Check that:
+        1. The YAML parses without errors
+        2. All column names match the model's actual output columns
+        3. Test definitions are syntactically valid
+        If validation fails, report the specific errors for correction.
+      tools:
+        - name: dbt_mcp.parse
+          instruction: "Parse the dbt project with the new schema.yml"
+        - name: dbt_mcp.compile
+          instruction: "Compile the model to verify schema references"
+      context:
+        static: []
+        dynamic:
+          - from: generate_yml
+            select: schema_yml_content
+      output_schema:
+        type: object
+        required: [parse_ok, compile_ok, errors]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 5: Create PR — DELEGATE with approval gate
+    - id: create_pr
+      mode: execute
+      type: delegate
+      delegate: shift.create_pr
+      requires_approval: true
+      context:
+        dynamic:
+          - from: generate_yml
+            select: [schema_yml_content, tests_added, column_count]
+          - from: resolve_model
+            select: [model_path, existing_schema_yml_path]

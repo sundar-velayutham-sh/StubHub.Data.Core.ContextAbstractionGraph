@@ -1,0 +1,27 @@
+{
+  "output": {
+    "schema_yml_content": "version: 2\n\nmodels:\n  - name: fct_ticket_sales\n    description: >\n      Fact table capturing individual ticket sale transactions.\n      Each row represents a single ticket sale with pricing,\n      venue, and buyer information.\n    columns:\n      - name: ticket_sale_id\n        description: Unique identifier for each ticket sale transaction.\n        tests:\n          - not_null\n          - unique\n      - name: event_date\n        description: Date of the event for which the ticket was sold.\n        tests:\n          - not_null\n      - name: venue_id\n        description: Foreign key to the venue dimension where the event takes place.\n        tests:\n          - not_null\n          - relationships:\n              to: ref('dim_venue')\n              field: venue_id\n      - name: buyer_id\n        description: Foreign key to the buyer who purchased the ticket.\n        tests:\n          - not_null\n      - name: section_name\n        description: Name of the seating section (e.g., Orchestra, Mezzanine, Balcony).\n      - name: quantity\n        description: Number of tickets in this sale transaction.\n        tests:\n          - not_null\n      - name: sale_price\n        description: Sale price of the ticket in the transaction currency.\n        tests:\n          - not_null\n      - name: currency_code\n        description: ISO 4217 currency code for the sale price (e.g., USD, GBP, EUR).\n        tests:\n          - not_null\n          - accepted_values:\n              values: ['USD', 'GBP', 'EUR', 'CAD', 'AUD']\n      - name: created_at\n        description: Timestamp when the sale record was created.\n        tests:\n          - not_null\n      - name: updated_at\n        description: Timestamp when the sale record was last updated. May be null if never updated.\n",
+    "tests_added": [
+      {"column": "ticket_sale_id", "tests": ["not_null", "unique"]},
+      {"column": "event_date", "tests": ["not_null"]},
+      {"column": "venue_id", "tests": ["not_null", "relationships"]},
+      {"column": "buyer_id", "tests": ["not_null"]},
+      {"column": "quantity", "tests": ["not_null"]},
+      {"column": "sale_price", "tests": ["not_null"]},
+      {"column": "currency_code", "tests": ["not_null", "accepted_values"]},
+      {"column": "created_at", "tests": ["not_null"]}
+    ],
+    "column_count": 10
+  },
+  "decision_log": {
+    "decision": "Generated schema.yml with 10 columns, 12 tests total",
+    "rationale": "Applied testing standards: not_null on all non-nullable columns, unique on PK (ticket_sale_id), relationships on FK (venue_id), accepted_values on currency_code. Nullable columns (section_name, updated_at) have no not_null test.",
+    "alternatives_considered": [
+      {"option": "Add not_null to section_name", "reason": "2.1% null rate suggests intentional — skip"}
+    ],
+    "confidence": "high",
+    "informed_by": ["column_metadata", "naming_conventions"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2000, "completion": 900}
+}

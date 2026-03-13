@@ -1,0 +1,20 @@
+{
+  "output": {
+    "model_path": "models/marts/core/fct_ticket_sales.sql",
+    "source_table_fqn": "DW.RPT.TICKET_SALES",
+    "existing_schema_yml_path": null
+  },
+  "decision_log": {
+    "decision": "Found model fct_ticket_sales in marts/core directory",
+    "rationale": "dbt_mcp.get_node_details_dev returned the model node. Source table resolved from sources.yml: DW.RPT.TICKET_SALES. No existing schema.yml found for this model.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.get_node_details_dev", "INFORMATION_SCHEMA.TABLES"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.get_node_details_dev", "input": "fct_ticket_sales"},
+    {"tool": "github_cli.search_code", "input": "filename:fct_ticket_sales.sql"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT * FROM DW.INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TICKET_SALES'"}
+  ],
+  "token_usage": {"prompt": 1100, "completion": 350}
+}

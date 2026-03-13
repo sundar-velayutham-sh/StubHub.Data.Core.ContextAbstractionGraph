@@ -1,0 +1,19 @@
+{
+  "output": {
+    "parse_ok": true,
+    "compile_ok": true,
+    "errors": []
+  },
+  "decision_log": {
+    "decision": "Validation passed — schema.yml is valid",
+    "rationale": "dbt parse completed without errors. dbt compile confirmed all column references are valid. Test definitions are syntactically correct.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.parse", "dbt_mcp.compile"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.parse", "input": "dbt parse"},
+    {"tool": "dbt_mcp.compile", "input": "dbt compile --select fct_ticket_sales"}
+  ],
+  "token_usage": {"prompt": 800, "completion": 200}
+}

@@ -1,0 +1,28 @@
+{
+  "output": {
+    "column_metadata": [
+      {"name": "TICKET_SALE_ID", "sf_type": "NUMBER(38,0)", "nullable": false, "null_pct": 0.0, "sample_values": [100001, 100002, 100003], "is_pk": true},
+      {"name": "EVENT_DATE", "sf_type": "DATE", "nullable": false, "null_pct": 0.0, "sample_values": ["2025-01-15", "2025-02-20", "2025-03-10"], "is_pk": false},
+      {"name": "VENUE_ID", "sf_type": "NUMBER(38,0)", "nullable": false, "null_pct": 0.0, "sample_values": [501, 502, 503], "is_pk": false},
+      {"name": "BUYER_ID", "sf_type": "NUMBER(38,0)", "nullable": false, "null_pct": 0.0, "sample_values": [10001, 10002, 10003], "is_pk": false},
+      {"name": "SECTION_NAME", "sf_type": "VARCHAR(256)", "nullable": true, "null_pct": 2.1, "sample_values": ["Orchestra", "Mezzanine", "Balcony"], "is_pk": false},
+      {"name": "QUANTITY", "sf_type": "NUMBER(10,0)", "nullable": false, "null_pct": 0.0, "sample_values": [1, 2, 4], "is_pk": false},
+      {"name": "SALE_PRICE", "sf_type": "NUMBER(18,2)", "nullable": false, "null_pct": 0.0, "sample_values": [75.00, 150.50, 299.99], "is_pk": false},
+      {"name": "CURRENCY_CODE", "sf_type": "VARCHAR(3)", "nullable": false, "null_pct": 0.0, "sample_values": ["USD", "GBP", "EUR"], "is_pk": false},
+      {"name": "CREATED_AT", "sf_type": "TIMESTAMP_NTZ", "nullable": false, "null_pct": 0.0, "sample_values": ["2025-01-15T10:30:00", "2025-02-20T14:15:00"], "is_pk": false},
+      {"name": "UPDATED_AT", "sf_type": "TIMESTAMP_NTZ", "nullable": true, "null_pct": 5.3, "sample_values": ["2025-01-16T08:00:00", null], "is_pk": false}
+    ]
+  },
+  "decision_log": {
+    "decision": "Collected metadata for all 10 columns from Snowflake",
+    "rationale": "INFORMATION_SCHEMA.COLUMNS provided types and nullability. Sample queries confirmed value distributions. TICKET_SALE_ID identified as PK (unique, non-null). SECTION_NAME and UPDATED_AT are nullable.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["INFORMATION_SCHEMA.COLUMNS", "sample queries"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.describe_table", "input": "DW.RPT.TICKET_SALES"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT COUNT(*), COUNT(TICKET_SALE_ID), COUNT(DISTINCT TICKET_SALE_ID) FROM DW.RPT.TICKET_SALES"}
+  ],
+  "token_usage": {"prompt": 1500, "completion": 600}
+}

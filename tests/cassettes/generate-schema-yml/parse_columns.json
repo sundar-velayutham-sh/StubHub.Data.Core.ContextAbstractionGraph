@@ -1,0 +1,29 @@
+{
+  "output": {
+    "columns": [
+      {"name": "TICKET_SALE_ID", "type": "passthrough", "source_column": "TICKET_SALE_ID"},
+      {"name": "EVENT_DATE", "type": "passthrough", "source_column": "EVENT_DATE"},
+      {"name": "VENUE_ID", "type": "passthrough", "source_column": "VENUE_ID"},
+      {"name": "BUYER_ID", "type": "passthrough", "source_column": "BUYER_ID"},
+      {"name": "SECTION_NAME", "type": "passthrough", "source_column": "SECTION_NAME"},
+      {"name": "QUANTITY", "type": "passthrough", "source_column": "QUANTITY"},
+      {"name": "SALE_PRICE", "type": "passthrough", "source_column": "SALE_PRICE"},
+      {"name": "CURRENCY_CODE", "type": "passthrough", "source_column": "CURRENCY_CODE"},
+      {"name": "CREATED_AT", "type": "passthrough", "source_column": "CREATED_AT"},
+      {"name": "UPDATED_AT", "type": "passthrough", "source_column": "UPDATED_AT"}
+    ],
+    "cte_count": 1,
+    "has_star_select": false
+  },
+  "decision_log": {
+    "decision": "Parsed 10 columns from final SELECT in fct_ticket_sales.sql",
+    "rationale": "Model has 1 CTE (source) and a final SELECT with 10 explicitly listed columns. No SELECT * detected.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["github_cli.read_file"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/marts/core/fct_ticket_sales.sql"}
+  ],
+  "token_usage": {"prompt": 900, "completion": 400}
+}

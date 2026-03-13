@@ -1,0 +1,11 @@
+{
+  "model_name": "fct_ticket_sales",
+  "column_count": 10,
+  "tests_added_count": 12,
+  "pk_column": "ticket_sale_id",
+  "pk_tests": ["not_null", "unique"],
+  "has_relationships_test": true,
+  "has_accepted_values_test": true,
+  "parse_ok": true,
+  "compile_ok": true
+}

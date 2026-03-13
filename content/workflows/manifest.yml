@@ -12,3 +12,17 @@ workflows:
     triggers:
       keywords: [optimize table, clustering, table performance, slow queries, partition]
       input_pattern: "optimize {table}"
+
+  - id: generate-schema-yml
+    name: Generate schema.yml for dbt Model
+    persona: analytics_engineer
+    triggers:
+      keywords: [generate schema, add documentation, document model, schema yml]
+      input_pattern: "generate schema for {model}"
+
+  - id: add-dbt-tests
+    name: Add dbt Tests to Existing Model
+    persona: analytics_engineer
+    triggers:
+      keywords: [add tests, dbt tests, test coverage, add test, improve tests]
+      input_pattern: "add tests to {model}"

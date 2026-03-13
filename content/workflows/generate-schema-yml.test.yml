@@ -1,0 +1,63 @@
+conformance:
+  workflow_id: generate-schema-yml
+
+  steps:
+    resolve_model:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - dbt_project_structure
+      tools_include:
+        - dbt_mcp.get_node_details_dev
+        - github_cli.search_code
+        - snowflake_mcp.execute_query
+      has_instruction: true
+
+    parse_columns:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - github_cli.read_file
+      dynamic_refs_from:
+        - resolve_model
+      has_instruction: true
+
+    describe_columns:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - sf_type_mapping
+        - naming_conventions
+      tools_include:
+        - snowflake_mcp.describe_table
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - parse_columns
+        - resolve_model
+      has_instruction: true
+
+    generate_yml:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_count: 0
+      knowledge_includes:
+        - naming_conventions
+      dynamic_refs_from:
+        - describe_columns
+        - parse_columns
+        - resolve_model
+      has_instruction: true
+
+    validate:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - dbt_mcp.parse
+        - dbt_mcp.compile
+      dynamic_refs_from:
+        - generate_yml
+      has_instruction: true
+
+    create_pr:
+      type: DelegateRequest
+      requires_approval: true
