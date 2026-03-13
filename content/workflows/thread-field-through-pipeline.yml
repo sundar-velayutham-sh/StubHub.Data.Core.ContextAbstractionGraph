@@ -1,0 +1,207 @@
+workflow:
+  id: thread-field-through-pipeline
+  name: Thread Field Through dbt Pipeline
+  persona: analytics_engineer
+
+  inputs:
+    column_name:
+      type: string
+      required: true
+    source_model:
+      type: string
+      required: true
+
+  steps:
+    # Step 0: Find the column in the source model
+    - id: resolve_source_column
+      mode: reason
+      instruction: |
+        Find the specified column in the source model. Verify the column exists
+        in the Snowflake table backing this model. Get the column's data type,
+        nullability, and sample values. If the column doesn't exist, check for
+        similar column names (fuzzy match) and report.
+
+        Also resolve the model's file path in the dbt project and the source
+        table FQN from Snowflake INFORMATION_SCHEMA.
+      tools:
+        - name: snowflake_mcp.describe_table
+          instruction: "Get column details for the source model's backing table"
+        - name: snowflake_mcp.execute_query
+          instruction: "Query INFORMATION_SCHEMA.COLUMNS for column metadata and sample values"
+        - name: github_cli.read_file
+          instruction: "Read the source model SQL to understand its SELECT list"
+      context:
+        static: [naming_conventions, sf_type_mapping]
+        dynamic: []
+      output_schema:
+        type: object
+        required: [model_name, model_path, table_fqn, column_info]
+        properties:
+          column_info:
+            type: object
+            required: [name, sf_type, nullable, sample_values]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 1: Get the full downstream lineage chain
+    - id: trace_pipeline_lineage
+      mode: reason
+      instruction: |
+        Trace the downstream lineage from the source model to find all models
+        in the pipeline that need the new column. Use dbt lineage to get the
+        full chain (e.g., stg_orders -> int_orders_enriched -> fct_orders).
+
+        For each model in the chain, collect:
+        - model name
+        - file path
+        - layer (staging, intermediate, fact, dimension)
+        - existing columns (to find insertion point)
+        - materialization type
+
+        Return the models_in_chain as an ordered list from source to final.
+      tools:
+        - name: dbt_mcp.get_lineage_dev
+          instruction: "Get downstream lineage for the source model"
+        - name: github_cli.search_code
+          instruction: "Search for model SQL files to get paths"
+      context:
+        static: []
+        dynamic:
+          - from: resolve_source_column
+            select: [model_name, column_info]
+      output_schema:
+        type: object
+        required: [models_in_chain, chain_length]
+        properties:
+          models_in_chain:
+            type: array
+            items:
+              type: object
+              required: [model_name, model_path, layer, existing_columns, materialization]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 12000
+
+    # Step 2: Show the threading plan for approval
+    - id: show_plan
+      mode: execute
+      type: delegate
+      delegate: shift.show_plan
+      requires_approval: true
+      context:
+        dynamic:
+          - from: trace_pipeline_lineage
+            select: [models_in_chain, chain_length]
+          - from: resolve_source_column
+            select: [column_info, model_name]
+
+    # Step 3: Modify each model SQL to add the column — LOOP
+    - id: modify_each_model
+      mode: reason
+      loop:
+        over: trace_pipeline_lineage.models_in_chain
+        as: current_model
+      instruction: |
+        Read the SQL file for {{current_model.model_name}} and add the new column.
+        Follow the layer-specific rules:
+        - Staging: Add to SELECT from source, apply snake_case conversion if needed
+        - Intermediate: Add to SELECT from ref(), handle GROUP BY if present
+        - Fact/Dimension: Add to final SELECT
+
+        Place the column near related columns, not at the end of the SELECT.
+        Preserve existing formatting and style.
+
+        Output the modified SQL content and a description of what changed.
+      tools:
+        - name: github_cli.read_file
+          instruction: "Read the current model SQL file"
+      context:
+        static: [naming_conventions, pipeline_threading_conventions]
+        dynamic:
+          - from: resolve_source_column
+            select: column_info
+      output_schema:
+        type: object
+        required: [model_name, modified_sql, changes_description]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 10000
+
+    # Step 4: Update schema.yml for each model — LOOP
+    - id: update_each_schema
+      mode: reason
+      loop:
+        over: trace_pipeline_lineage.models_in_chain
+        as: current_model
+      instruction: |
+        Read the schema.yml file for {{current_model.model_name}} and add the
+        new column entry. Include:
+        - Column name (snake_case)
+        - Clear business-friendly description
+        - Appropriate tests based on column type and layer:
+          - PK columns: not_null + unique
+          - FK columns: not_null + relationships
+          - Nullable columns: no not_null test
+          - Enum columns: accepted_values
+
+        If no schema.yml exists for this model, create one with the model
+        description and the new column entry.
+      tools:
+        - name: github_cli.read_file
+          instruction: "Read the existing schema.yml for this model"
+      context:
+        static: [testing_standards]
+        dynamic:
+          - from: resolve_source_column
+            select: column_info
+      output_schema:
+        type: object
+        required: [model_name, schema_yml_content, tests_added]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 5: Validate all modified models compile and pass tests
+    - id: validate_pipeline
+      mode: reason
+      instruction: |
+        Compile and test all modified models to ensure the column was threaded
+        correctly through the entire pipeline. Run dbt compile on each model,
+        then dbt test to verify all tests pass (including newly added tests).
+
+        Report any compilation errors or test failures with specific details
+        about which model and which test failed.
+      tools:
+        - name: dbt_mcp.compile
+          instruction: "Compile each modified model to check for SQL errors"
+        - name: dbt_mcp.test
+          instruction: "Run tests on each modified model"
+      context:
+        static: []
+        dynamic:
+          - from: modify_each_model
+          - from: update_each_schema
+      output_schema:
+        type: object
+        required: [compile_ok, tests_ok, errors]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 6: Create PR with all changes
+    - id: create_pr
+      mode: execute
+      type: delegate
+      delegate: shift.create_pr
+      requires_approval: true
+      context:
+        dynamic:
+          - from: resolve_source_column
+            select: [model_name, column_info]
+          - from: trace_pipeline_lineage
+            select: models_in_chain
+          - from: modify_each_model
+          - from: update_each_schema
+          - from: validate_pipeline
+            select: [compile_ok, tests_ok]

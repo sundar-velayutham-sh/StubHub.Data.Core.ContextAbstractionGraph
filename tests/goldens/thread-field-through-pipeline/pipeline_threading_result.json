@@ -1,0 +1,9 @@
+{
+  "column_name": "VENUE_CAPACITY",
+  "source_model": "stg_venues",
+  "chain_length": 3,
+  "models_modified": ["stg_venues", "int_venues_enriched", "fct_event_sales"],
+  "column_sf_type": "NUMBER(10,0)",
+  "compile_ok": true,
+  "tests_ok": true
+}

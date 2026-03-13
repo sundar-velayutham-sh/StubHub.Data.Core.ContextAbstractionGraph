@@ -26,3 +26,17 @@ workflows:
     triggers:
       keywords: [add tests, dbt tests, test coverage, add test, improve tests]
       input_pattern: "add tests to {model}"
+
+  - id: thread-field-through-pipeline
+    name: Thread Field Through dbt Pipeline
+    persona: analytics_engineer
+    triggers:
+      keywords: [thread column, add field through pipeline, propagate column, thread field]
+      input_pattern: "{column} through {model} pipeline"
+
+  - id: configure-ingestion-pipeline
+    name: Configure Data Ingestion Pipeline
+    persona: data_engineer
+    triggers:
+      keywords: [add ingestion, configure pipeline, new data source, ingest table, add source ingestion]
+      input_pattern: "ingest {table} from {source}"

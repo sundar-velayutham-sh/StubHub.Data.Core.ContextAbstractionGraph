@@ -1,0 +1,28 @@
+{
+  "output": {
+    "model_name": "stg_venues",
+    "model_path": "models/staging/ticketing/stg_venues.sql",
+    "table_fqn": "DW.STAGING.STG_VENUES",
+    "column_info": {
+      "name": "VENUE_CAPACITY",
+      "sf_type": "NUMBER(10,0)",
+      "nullable": true,
+      "sample_values": [20000, 45000, 5500, null, 18000]
+    }
+  },
+  "decision_log": {
+    "decision": "Found VENUE_CAPACITY in stg_venues backing table",
+    "rationale": "Column exists in DW.STAGING.STG_VENUES with NUMBER(10,0) type. Nullable — 3% null rate. Represents venue seating capacity.",
+    "alternatives_considered": [
+      {"option": "CAPACITY", "reason": "Similar name exists but refers to parking capacity — VENUE_CAPACITY is the correct column"}
+    ],
+    "confidence": "high",
+    "informed_by": ["INFORMATION_SCHEMA.COLUMNS", "sample query"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.describe_table", "input": "DW.STAGING.STG_VENUES"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT VENUE_CAPACITY FROM DW.STAGING.STG_VENUES LIMIT 5"},
+    {"tool": "github_cli.read_file", "input": "models/staging/ticketing/stg_venues.sql"}
+  ],
+  "token_usage": {"prompt": 1300, "completion": 450}
+}

@@ -1,0 +1,19 @@
+{
+  "output": {
+    "compile_ok": true,
+    "tests_ok": true,
+    "errors": []
+  },
+  "decision_log": {
+    "decision": "All 3 models compile and pass tests",
+    "rationale": "dbt compile succeeded for stg_venues, int_venues_enriched, fct_event_sales. All existing tests pass. No new test failures introduced.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.compile", "dbt_mcp.test"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.compile", "input": "dbt compile --select stg_venues int_venues_enriched fct_event_sales"},
+    {"tool": "dbt_mcp.test", "input": "dbt test --select stg_venues int_venues_enriched fct_event_sales"}
+  ],
+  "token_usage": {"prompt": 1800, "completion": 300}
+}

@@ -1,0 +1,49 @@
+knowledge:
+  id: testing_standards
+  domain: testing
+  description: "dbt testing standards for StubHub data models"
+
+  guidance:
+    - "Every primary key column must have both not_null and unique tests"
+    - "Foreign keys should have not_null and relationships tests"
+    - "Boolean columns (is_*, has_*) should have accepted_values: [true, false]"
+    - "Enum columns (*_code, *_type, *_status) should have accepted_values"
+    - "Timestamp columns (*_at, *_date) should have not_null"
+    - "Every model must have at least one not_null test on its grain column"
+    - "New columns added via pipeline threading inherit test expectations from their layer"
+
+  required_tests:
+    primary_key:
+      tests: ["not_null", "unique"]
+      description: "Every primary key column must have both tests"
+    foreign_key:
+      tests: ["not_null", "relationships"]
+      description: "Foreign keys should reference the parent table"
+    boolean:
+      tests: ["not_null", "accepted_values"]
+      values: [true, false]
+    enum:
+      tests: ["accepted_values"]
+      description: "Columns with known value sets should have accepted_values"
+    timestamp:
+      tests: ["not_null"]
+      description: "Created/updated timestamps are typically not_null"
+
+  naming_patterns:
+    - pattern: ".*_id$"
+      likely_type: "foreign_key"
+      suggested_tests: ["not_null", "relationships"]
+    - pattern: "^is_.*|^has_.*"
+      likely_type: "boolean"
+      suggested_tests: ["not_null", "accepted_values"]
+    - pattern: ".*_at$|.*_date$"
+      likely_type: "timestamp"
+      suggested_tests: ["not_null"]
+    - pattern: ".*_code$|.*_type$|.*_status$"
+      likely_type: "enum"
+      suggested_tests: ["accepted_values"]
+
+  coverage_rules:
+    - "Every model must have at least one not_null test"
+    - "Every model must have at least one unique test on its grain column"
+    - "New columns added via pipeline threading inherit test expectations from their layer"

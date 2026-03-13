@@ -1,0 +1,41 @@
+{
+  "output": {
+    "models_in_chain": [
+      {
+        "model_name": "stg_venues",
+        "model_path": "models/staging/ticketing/stg_venues.sql",
+        "layer": "staging",
+        "existing_columns": ["VENUE_ID", "VENUE_NAME", "CITY", "STATE", "COUNTRY", "CREATED_AT"],
+        "materialization": "view"
+      },
+      {
+        "model_name": "int_venues_enriched",
+        "model_path": "models/intermediate/ticketing/int_venues_enriched.sql",
+        "layer": "intermediate",
+        "existing_columns": ["VENUE_ID", "VENUE_NAME", "CITY", "STATE", "COUNTRY", "REGION", "TIMEZONE", "CREATED_AT"],
+        "materialization": "table"
+      },
+      {
+        "model_name": "fct_event_sales",
+        "model_path": "models/marts/core/fct_event_sales.sql",
+        "layer": "fact",
+        "existing_columns": ["EVENT_SALE_ID", "EVENT_DATE", "VENUE_ID", "VENUE_NAME", "TICKET_COUNT", "GMS", "CREATED_AT"],
+        "materialization": "incremental"
+      }
+    ],
+    "chain_length": 3
+  },
+  "decision_log": {
+    "decision": "Traced 3-model pipeline: stg_venues -> int_venues_enriched -> fct_event_sales",
+    "rationale": "dbt lineage shows stg_venues feeds int_venues_enriched which feeds fct_event_sales. All three models need VENUE_CAPACITY added.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.get_lineage_dev", "github_cli.search_code"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.get_lineage_dev", "input": "stg_venues"},
+    {"tool": "github_cli.search_code", "input": "filename:int_venues_enriched.sql"},
+    {"tool": "github_cli.search_code", "input": "filename:fct_event_sales.sql"}
+  ],
+  "token_usage": {"prompt": 1500, "completion": 600}
+}

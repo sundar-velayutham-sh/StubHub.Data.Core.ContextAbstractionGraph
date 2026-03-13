@@ -1,0 +1,73 @@
+conformance:
+  workflow_id: thread-field-through-pipeline
+
+  steps:
+    resolve_source_column:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - naming_conventions
+        - sf_type_mapping
+      tools_include:
+        - snowflake_mcp.describe_table
+        - snowflake_mcp.execute_query
+        - github_cli.read_file
+      has_instruction: true
+
+    trace_pipeline_lineage:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - dbt_mcp.get_lineage_dev
+        - github_cli.search_code
+      dynamic_refs_from:
+        - resolve_source_column
+      has_instruction: true
+
+    show_plan:
+      type: DelegateRequest
+      requires_approval: true
+
+    modify_each_model:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - naming_conventions
+        - pipeline_threading_conventions
+      tools_include:
+        - github_cli.read_file
+      dynamic_refs_from:
+        - resolve_source_column
+      has_instruction: true
+      has_loop: true
+      loop_over: trace_pipeline_lineage.models_in_chain
+      loop_as: current_model
+
+    update_each_schema:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - testing_standards
+      tools_include:
+        - github_cli.read_file
+      dynamic_refs_from:
+        - resolve_source_column
+      has_instruction: true
+      has_loop: true
+      loop_over: trace_pipeline_lineage.models_in_chain
+      loop_as: current_model
+
+    validate_pipeline:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - dbt_mcp.compile
+        - dbt_mcp.test
+      dynamic_refs_from:
+        - modify_each_model
+        - update_each_schema
+      has_instruction: true
+
+    create_pr:
+      type: DelegateRequest
+      requires_approval: true
