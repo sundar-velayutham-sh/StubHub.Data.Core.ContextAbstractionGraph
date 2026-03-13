@@ -1,0 +1,89 @@
+conformance:
+  workflow_id: fix-model-bug
+
+  steps:
+    parse_error:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - troubleshooting_patterns
+      tools_include:
+        - snowflake_mcp.execute_query
+      has_instruction: true
+
+    read_model_sql:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - troubleshooting_patterns
+      tools_include:
+        - github_cli.read_file
+        - dbt_mcp.get_node_details_dev
+      dynamic_refs_from:
+        - parse_error
+      has_instruction: true
+
+    classify_bug_type:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_count: 0
+      knowledge_includes:
+        - troubleshooting_patterns
+        - data_quality_checks
+      dynamic_refs_from:
+        - parse_error
+        - read_model_sql
+      has_instruction: true
+
+    fix_cast_error:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - troubleshooting_patterns
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - read_model_sql
+        - classify_bug_type
+      has_instruction: true
+
+    fix_join_error:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - troubleshooting_patterns
+      tools_include:
+        - snowflake_mcp.execute_query
+        - snowflake_mcp.describe_table
+      dynamic_refs_from:
+        - read_model_sql
+        - classify_bug_type
+      has_instruction: true
+
+    fix_logic_error:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - troubleshooting_patterns
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - read_model_sql
+        - classify_bug_type
+      has_instruction: true
+
+    validate_fix:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - dbt_mcp.compile
+        - dbt_mcp.test
+        - dbt_mcp.show
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - classify_bug_type
+      has_instruction: true
+
+    create_pr:
+      type: DelegateRequest
+      requires_approval: true

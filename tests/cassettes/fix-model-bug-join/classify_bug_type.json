@@ -1,0 +1,19 @@
+{
+  "output": {
+    "bug_type": "join_error",
+    "confidence": "high",
+    "rationale": "Row count explosion (10x) after JOIN indicates fanout. VENUE_DIM likely has duplicate VENUE_IDs (SCD Type 2 or data quality issue). The join condition ON t.VENUE_ID = v.VENUE_ID is missing a filter for the current/active record.",
+    "failing_component": "JOIN venues v ON t.VENUE_ID = v.VENUE_ID"
+  },
+  "decision_log": {
+    "decision": "Classified as join_error",
+    "rationale": "Row count explosion is the hallmark of a join fanout. The dim table likely has multiple rows per VENUE_ID.",
+    "alternatives_considered": [
+      {"option": "logic_error", "reason": "Could be wrong GROUP BY, but row explosion points to join"}
+    ],
+    "confidence": "high",
+    "informed_by": ["error_message", "model_sql"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1500, "completion": 300}
+}

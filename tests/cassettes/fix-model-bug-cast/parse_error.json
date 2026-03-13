@@ -1,0 +1,17 @@
+{
+  "output": {
+    "error_type": "runtime",
+    "failing_expression": "CAST(TICKET_PRICE AS NUMBER(18,2))",
+    "source_table": "DW.STG.STG_TICKET_LISTING",
+    "model_name": "stg_ticket_listing"
+  },
+  "decision_log": {
+    "decision": "Extracted cast failure from error message",
+    "rationale": "Error message contains 'Numeric value is not recognized' pointing to CAST expression on TICKET_PRICE column. Source table is STG_TICKET_LISTING.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["error_message"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 800, "completion": 300}
+}

@@ -1,0 +1,19 @@
+{
+  "output": {
+    "bug_type": "cast_error",
+    "confidence": "high",
+    "rationale": "Error message indicates 'Numeric value is not recognized' on CAST(TICKET_PRICE AS NUMBER). Source data likely contains non-numeric values (empty strings, currency symbols, or text) in the TICKET_PRICE column.",
+    "failing_component": "CAST(TICKET_PRICE AS NUMBER(18,2))"
+  },
+  "decision_log": {
+    "decision": "Classified as cast_error",
+    "rationale": "Clear pattern match: runtime error with 'Numeric value' in message, CAST expression in SQL, non-numeric source data.",
+    "alternatives_considered": [
+      {"option": "logic_error", "reason": "Could be wrong column, but error message points to cast"}
+    ],
+    "confidence": "high",
+    "informed_by": ["error_message", "model_sql"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1500, "completion": 300}
+}

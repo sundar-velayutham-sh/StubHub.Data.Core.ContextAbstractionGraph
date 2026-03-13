@@ -1,0 +1,21 @@
+{
+  "output": {
+    "model_path": "models/staging/ticket/stg_ticket_listing.sql",
+    "model_sql": "WITH source AS (\n    SELECT * FROM {{ source('ticket', 'TICKET_LISTING') }}\n),\nfinal AS (\n    SELECT\n        LISTING_ID,\n        EVENT_ID,\n        CAST(TICKET_PRICE AS NUMBER(18,2)) AS ticket_price,\n        CAST(FACE_VALUE AS NUMBER(18,2)) AS face_value,\n        SECTION_NAME,\n        ROW_NAME,\n        QUANTITY,\n        CREATED_AT\n    FROM source\n)\nSELECT * FROM final",
+    "cte_structure": ["source", "final"],
+    "source_refs": ["{{ source('ticket', 'TICKET_LISTING') }}"],
+    "materialization": "view"
+  },
+  "decision_log": {
+    "decision": "Read model SQL and identified CTE structure",
+    "rationale": "Model has 2 CTEs (source, final). CAST expressions on TICKET_PRICE and FACE_VALUE are the likely failure points. Model is a view materialization.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["github_cli.read_file", "dbt_mcp.get_node_details_dev"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/staging/ticket/stg_ticket_listing.sql"},
+    {"tool": "dbt_mcp.get_node_details_dev", "input": "stg_ticket_listing"}
+  ],
+  "token_usage": {"prompt": 1200, "completion": 500}
+}

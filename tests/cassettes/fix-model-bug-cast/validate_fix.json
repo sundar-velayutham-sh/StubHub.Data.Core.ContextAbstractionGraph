@@ -1,0 +1,26 @@
+{
+  "output": {
+    "compile_ok": true,
+    "tests_passed": true,
+    "preview_rows": [
+      {"listing_id": 1001, "ticket_price": 150.00, "face_value": 75.00},
+      {"listing_id": 1002, "ticket_price": null, "face_value": 100.00},
+      {"listing_id": 1003, "ticket_price": 299.99, "face_value": null}
+    ],
+    "fix_verified": true
+  },
+  "decision_log": {
+    "decision": "Fix validated — model compiles, tests pass, data looks correct",
+    "rationale": "dbt compile succeeded. dbt test passed (not_null on LISTING_ID, unique on LISTING_ID). dbt show previewed 3 rows with correct NULL handling. Previously-failing query now returns results without error.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.compile", "dbt_mcp.test", "dbt_mcp.show", "snowflake_mcp.execute_query"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.compile", "input": "dbt compile --select stg_ticket_listing"},
+    {"tool": "dbt_mcp.test", "input": "dbt test --select stg_ticket_listing"},
+    {"tool": "dbt_mcp.show", "input": "dbt show --select stg_ticket_listing --limit 5"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT * FROM DW.STG.STG_TICKET_LISTING LIMIT 3"}
+  ],
+  "token_usage": {"prompt": 1800, "completion": 400}
+}

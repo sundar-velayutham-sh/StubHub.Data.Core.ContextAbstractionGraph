@@ -1,0 +1,24 @@
+{
+  "output": {
+    "compile_ok": true,
+    "tests_passed": true,
+    "preview_rows": [
+      {"event_id": 5001, "event_date": "2025-03-15", "venue_name": "Madison Square Garden", "total_gms": 125000.00, "transaction_count": 450},
+      {"event_id": 5002, "event_date": "2025-03-16", "venue_name": "Staples Center", "total_gms": 89000.00, "transaction_count": 312}
+    ],
+    "fix_verified": true
+  },
+  "decision_log": {
+    "decision": "Fix validated — row count is correct, no fanout",
+    "rationale": "dbt compile succeeded. Row count matches expected (15K events, not 42K). dbt test passed. Preview rows show correct aggregations.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.compile", "dbt_mcp.test", "dbt_mcp.show"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.compile", "input": "dbt compile --select rpt_event_summary"},
+    {"tool": "dbt_mcp.test", "input": "dbt test --select rpt_event_summary"},
+    {"tool": "dbt_mcp.show", "input": "dbt show --select rpt_event_summary --limit 5"}
+  ],
+  "token_usage": {"prompt": 1600, "completion": 350}
+}

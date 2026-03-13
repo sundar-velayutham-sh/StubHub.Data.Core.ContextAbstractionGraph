@@ -1,0 +1,19 @@
+{
+  "output": {
+    "error_type": "runtime",
+    "failing_expression": "JOIN DW.CORE.VENUE_DIM ON t.VENUE_ID = v.VENUE_ID",
+    "source_table": "DW.RPT.EVENT_SUMMARY",
+    "model_name": "rpt_event_summary"
+  },
+  "decision_log": {
+    "decision": "Extracted join failure from dbt run results",
+    "rationale": "Recent dbt run result shows row count explosion (10x expected) after JOIN to VENUE_DIM. Likely a fanout from duplicate join keys.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DW.DATAOPS_DBT.DBT_RUN_RESULTS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT * FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE NAME = 'rpt_event_summary' AND STATUS = 'error' ORDER BY CREATED_AT DESC LIMIT 5"}
+  ],
+  "token_usage": {"prompt": 900, "completion": 350}
+}

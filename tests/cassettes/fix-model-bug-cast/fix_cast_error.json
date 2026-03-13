@@ -1,0 +1,21 @@
+{
+  "output": {
+    "fixed_sql": "WITH source AS (\n    SELECT * FROM {{ source('ticket', 'TICKET_LISTING') }}\n),\nfinal AS (\n    SELECT\n        LISTING_ID,\n        EVENT_ID,\n        TRY_CAST(NULLIF(TRIM(TICKET_PRICE), '') AS NUMBER(18,2)) AS ticket_price,\n        TRY_CAST(NULLIF(TRIM(FACE_VALUE), '') AS NUMBER(18,2)) AS face_value,\n        SECTION_NAME,\n        ROW_NAME,\n        QUANTITY,\n        CREATED_AT\n    FROM source\n)\nSELECT * FROM final",
+    "fix_description": "Replaced CAST with TRY_CAST and added NULLIF(TRIM(...), '') to handle empty strings and whitespace in TICKET_PRICE and FACE_VALUE columns. TRY_CAST returns NULL instead of failing on non-numeric values.",
+    "problematic_values": ["", " ", "$150.00", "N/A", "TBD"]
+  },
+  "decision_log": {
+    "decision": "Applied TRY_CAST + NULLIF fix pattern",
+    "rationale": "Source data contains empty strings, whitespace, currency symbols ($150.00), and text values (N/A, TBD). TRY_CAST safely handles all cases by returning NULL. NULLIF handles empty strings specifically. TRIM handles whitespace.",
+    "alternatives_considered": [
+      {"option": "WHERE filter to exclude bad rows", "reason": "Would lose data — TRY_CAST is safer"},
+      {"option": "REGEXP_REPLACE to strip non-numeric", "reason": "Overkill for this case, TRY_CAST is simpler"}
+    ],
+    "confidence": "high",
+    "informed_by": ["snowflake_mcp.execute_query"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT DISTINCT TICKET_PRICE FROM DW.STG.STG_TICKET_LISTING WHERE TRY_CAST(TICKET_PRICE AS NUMBER(18,2)) IS NULL AND TICKET_PRICE IS NOT NULL LIMIT 20"}
+  ],
+  "token_usage": {"prompt": 2000, "completion": 600}
+}

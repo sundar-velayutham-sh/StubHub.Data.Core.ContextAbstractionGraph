@@ -1,0 +1,31 @@
+{
+  "output": {
+    "fixed_sql": "WITH transactions AS (\n    SELECT * FROM {{ ref('fct_transaction') }}\n),\nvenues AS (\n    SELECT * FROM {{ ref('dim_venue') }}\n    WHERE IS_CURRENT = TRUE\n),\nfinal AS (\n    SELECT\n        t.EVENT_ID,\n        t.EVENT_DATE,\n        v.VENUE_NAME,\n        v.CITY,\n        v.STATE,\n        SUM(t.GMS) AS total_gms,\n        COUNT(t.TRANSACTION_ID) AS transaction_count\n    FROM transactions t\n    JOIN venues v ON t.VENUE_ID = v.VENUE_ID\n    GROUP BY 1, 2, 3, 4, 5\n)\nSELECT * FROM final",
+    "fix_description": "Added WHERE IS_CURRENT = TRUE filter to the venues CTE to select only the current SCD Type 2 record per VENUE_ID. This eliminates the fanout caused by multiple historical records per venue.",
+    "join_analysis": {
+      "left_table": "fct_transaction",
+      "left_key_cardinality": 15000,
+      "right_table": "dim_venue",
+      "right_key_cardinality": 15000,
+      "right_total_rows": 42000,
+      "duplicates_per_key": 2.8,
+      "root_cause": "SCD Type 2 dimension with IS_CURRENT flag — multiple rows per VENUE_ID without filter"
+    }
+  },
+  "decision_log": {
+    "decision": "Added IS_CURRENT = TRUE filter to dimension CTE",
+    "rationale": "dim_venue has 42K rows but only 15K distinct VENUE_IDs (2.8 rows per key on average). IS_CURRENT column exists — filtering to TRUE gives 1:1 cardinality and eliminates fanout.",
+    "alternatives_considered": [
+      {"option": "QUALIFY ROW_NUMBER() dedup", "reason": "Would work but IS_CURRENT flag is the intended pattern"},
+      {"option": "Add effective_date range filter", "reason": "More complex and IS_CURRENT is sufficient"}
+    ],
+    "confidence": "high",
+    "informed_by": ["snowflake_mcp.execute_query", "snowflake_mcp.describe_table"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT COUNT(*), COUNT(DISTINCT VENUE_ID) FROM DW.CORE.VENUE_DIM"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT COUNT(*), COUNT(DISTINCT VENUE_ID) FROM DW.CORE.VENUE_DIM WHERE IS_CURRENT = TRUE"},
+    {"tool": "snowflake_mcp.describe_table", "input": "DW.CORE.VENUE_DIM"}
+  ],
+  "token_usage": {"prompt": 2200, "completion": 700}
+}

@@ -1,0 +1,21 @@
+{
+  "output": {
+    "model_path": "models/marts/reporting/rpt_event_summary.sql",
+    "model_sql": "WITH transactions AS (\n    SELECT * FROM {{ ref('fct_transaction') }}\n),\nvenues AS (\n    SELECT * FROM {{ ref('dim_venue') }}\n),\nfinal AS (\n    SELECT\n        t.EVENT_ID,\n        t.EVENT_DATE,\n        v.VENUE_NAME,\n        v.CITY,\n        v.STATE,\n        SUM(t.GMS) AS total_gms,\n        COUNT(t.TRANSACTION_ID) AS transaction_count\n    FROM transactions t\n    JOIN venues v ON t.VENUE_ID = v.VENUE_ID\n    GROUP BY 1, 2, 3, 4, 5\n)\nSELECT * FROM final",
+    "cte_structure": ["transactions", "venues", "final"],
+    "source_refs": ["{{ ref('fct_transaction') }}", "{{ ref('dim_venue') }}"],
+    "materialization": "table"
+  },
+  "decision_log": {
+    "decision": "Read model SQL and identified JOIN structure",
+    "rationale": "Model joins fct_transaction to dim_venue on VENUE_ID. The fanout suggests duplicates in dim_venue on VENUE_ID (possibly SCD Type 2 with multiple active rows).",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["github_cli.read_file", "dbt_mcp.get_node_details_dev"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/marts/reporting/rpt_event_summary.sql"},
+    {"tool": "dbt_mcp.get_node_details_dev", "input": "rpt_event_summary"}
+  ],
+  "token_usage": {"prompt": 1200, "completion": 500}
+}

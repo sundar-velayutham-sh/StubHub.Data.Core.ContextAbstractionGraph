@@ -1,0 +1,274 @@
+workflow:
+  id: fix-model-bug
+  name: Fix Bug in dbt Model
+  persona: analytics_engineer
+
+  inputs:
+    model_name:
+      type: string
+      required: true
+    error_message:
+      type: string
+      required: false
+
+  steps:
+    # Step 0: Parse the error message to extract clues
+    - id: parse_error
+      mode: reason
+      instruction: |
+        Parse the error message (if provided) or query recent dbt run results
+        to find the failure. Extract:
+        1. Error type (compilation, runtime, data type mismatch, join failure)
+        2. Failing column/expression
+        3. Source table involved
+        4. Line number or SQL fragment if available
+
+        If no error_message is provided, query DW.DATAOPS_DBT.DBT_RUN_RESULTS
+        for the most recent failure for this model.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query DBT_RUN_RESULTS for recent failures if no error_message provided"
+          usage_pattern: |
+            1. SELECT * FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS
+               WHERE NAME = '{model_name}' AND STATUS = 'error'
+               ORDER BY CREATED_AT DESC LIMIT 5
+      context:
+        static: [troubleshooting_patterns]
+        dynamic: []
+      output_schema:
+        type: object
+        required: [error_type, failing_expression, source_table, model_name]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 1: Read the model SQL and understand its structure
+    - id: read_model_sql
+      mode: reason
+      instruction: |
+        Read the model SQL file from GitHub. Understand:
+        1. CTE structure and dependencies
+        2. Source references (ref/source)
+        3. Column definitions and transformations
+        4. Join conditions
+        5. WHERE clause filters
+
+        Also get dbt node details to understand materialization,
+        tags, and upstream dependencies.
+      tools:
+        - name: github_cli.read_file
+          instruction: "Read the model SQL file from the Astronomer repo"
+        - name: dbt_mcp.get_node_details_dev
+          instruction: "Get model metadata: materialization, tags, dependencies"
+      context:
+        static: [troubleshooting_patterns]
+        dynamic:
+          - from: parse_error
+            select: model_name
+      output_schema:
+        type: object
+        required: [model_path, model_sql, cte_structure, source_refs, materialization]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 2: Classify the bug type for conditional routing
+    - id: classify_bug_type
+      mode: reason
+      instruction: |
+        Based on the error message and model SQL, classify the bug into one of:
+
+        - cast_error: Data type mismatch, invalid cast, numeric overflow,
+          TRY_CAST needed, VARCHAR-to-NUMBER failures
+        - join_error: Join key mismatch, fanout/duplication from joins,
+          missing join condition, NULL join keys
+        - logic_error: Wrong filter logic, incorrect date range, missing
+          WHERE clause, wrong aggregation, incorrect CASE WHEN
+
+        Consider the error message pattern, the SQL structure, and common
+        failure modes for each type. Output a single bug_type classification
+        with confidence and rationale.
+      tools: []
+      context:
+        static: [troubleshooting_patterns, data_quality_checks]
+        dynamic:
+          - from: parse_error
+          - from: read_model_sql
+      output_schema:
+        type: object
+        required: [bug_type, confidence, rationale, failing_component]
+        properties:
+          bug_type:
+            type: string
+            enum: [cast_error, join_error, logic_error]
+      budget:
+        max_llm_turns: 2
+        max_tokens: 5000
+      transitions:
+        - when: "output.bug_type == 'cast_error'"
+          goto: fix_cast_error
+        - when: "output.bug_type == 'join_error'"
+          goto: fix_join_error
+        - default: fix_logic_error
+
+    # Step 3a: Fix cast/type errors
+    - id: fix_cast_error
+      mode: reason
+      instruction: |
+        Fix the data type casting error. Common fixes:
+        1. Replace CAST with TRY_CAST for nullable/dirty data
+        2. Add NULLIF to handle empty strings before casting
+        3. Use TRY_TO_NUMBER, TRY_TO_DATE for safe conversions
+        4. Add explicit type coercion in CTE before the failing expression
+        5. Handle NULL propagation in numeric expressions
+
+        Read the failing SQL, identify the exact cast expression, and produce
+        the corrected SQL. Verify the fix by running a sample query against
+        the source data to confirm the problematic values are handled.
+
+        Output the complete modified SQL file content (not a diff).
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Sample the source data to find the problematic values causing cast failures"
+          usage_pattern: |
+            1. SELECT DISTINCT {failing_column} FROM {source_table}
+               WHERE TRY_CAST({failing_column} AS {target_type}) IS NULL
+               AND {failing_column} IS NOT NULL LIMIT 20
+      context:
+        static: [troubleshooting_patterns]
+        dynamic:
+          - from: read_model_sql
+          - from: classify_bug_type
+      anti_patterns:
+        - "Don't just wrap everything in TRY_CAST — fix the root cause if possible"
+        - "Don't swallow NULLs silently — add a comment explaining the fix"
+      output_schema:
+        type: object
+        required: [fixed_sql, fix_description, problematic_values]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 12000
+      transitions:
+        - default: validate_fix
+
+    # Step 3b: Fix join errors
+    - id: fix_join_error
+      mode: reason
+      instruction: |
+        Fix the join-related error. Common fixes:
+        1. Add missing join condition to prevent fanout
+        2. Fix join key type mismatch (e.g., VARCHAR vs NUMBER)
+        3. Add COALESCE or NVL for NULL join keys
+        4. Change JOIN type (INNER vs LEFT) based on data reality
+        5. Add deduplication CTE before joining
+
+        Investigate both sides of the join: describe both tables, check
+        key cardinality, and verify the join produces the expected row count.
+
+        Output the complete modified SQL file content (not a diff).
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Check join key cardinality and type on both sides"
+          usage_pattern: |
+            1. SELECT COUNT(*), COUNT(DISTINCT {join_key}) FROM {left_table}
+            2. SELECT COUNT(*), COUNT(DISTINCT {join_key}) FROM {right_table}
+            3. SELECT typeof({join_key}) FROM {table} LIMIT 1
+        - name: snowflake_mcp.describe_table
+          instruction: "Describe both tables involved in the join to verify column types"
+      context:
+        static: [troubleshooting_patterns]
+        dynamic:
+          - from: read_model_sql
+          - from: classify_bug_type
+      anti_patterns:
+        - "Don't just switch to LEFT JOIN to hide missing data — understand why"
+        - "Don't add DISTINCT to mask a fanout — fix the join condition"
+      output_schema:
+        type: object
+        required: [fixed_sql, fix_description, join_analysis]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 12000
+      transitions:
+        - default: validate_fix
+
+    # Step 3c: Fix logic errors
+    - id: fix_logic_error
+      mode: reason
+      instruction: |
+        Fix the logic error. Common fixes:
+        1. Correct WHERE clause filter (wrong date range, wrong operator)
+        2. Fix CASE WHEN logic (missing ELSE, overlapping conditions)
+        3. Correct aggregation (wrong GROUP BY, missing column)
+        4. Fix window function (wrong PARTITION BY or ORDER BY)
+        5. Correct incremental logic (missing is_incremental() guard)
+
+        Run diagnostic queries to understand the data and verify the fix
+        produces correct results. Compare output before and after the fix.
+
+        Output the complete modified SQL file content (not a diff).
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Run diagnostic queries to understand the data and verify the fix"
+          usage_pattern: |
+            1. Run the original failing query fragment to see the error
+            2. Run the corrected query fragment to verify it works
+            3. Compare row counts before/after
+      context:
+        static: [troubleshooting_patterns]
+        dynamic:
+          - from: read_model_sql
+          - from: classify_bug_type
+      output_schema:
+        type: object
+        required: [fixed_sql, fix_description, diagnostic_results]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 12000
+      transitions:
+        - default: validate_fix
+
+    # Step 4: Validate the fix
+    - id: validate_fix
+      mode: reason
+      instruction: |
+        Validate the fix using the full dbt-MCP validation suite:
+        1. dbt_mcp.compile — check SQL compiles
+        2. dbt_mcp.test — run tests for this model
+        3. dbt_mcp.show — preview output rows
+        4. Snowflake spot-check — verify the previously-failing query now works
+
+        The fix came from one of three possible branches (fix_cast_error,
+        fix_join_error, or fix_logic_error). Use whichever produced output —
+        the others will be absent. Look for fixed_sql in the available context.
+      tools:
+        - name: dbt_mcp.compile
+          instruction: "Compile the fixed model SQL"
+        - name: dbt_mcp.test
+          instruction: "Run dbt test --select {model_name}"
+        - name: dbt_mcp.show
+          instruction: "Preview output rows for the fixed model"
+        - name: snowflake_mcp.execute_query
+          instruction: "Re-run the previously-failing query to confirm the fix"
+      context:
+        static: []
+        dynamic:
+          - from: classify_bug_type
+      output_schema:
+        type: object
+        required: [compile_ok, tests_passed, preview_rows, fix_verified]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 5: Create PR
+    - id: create_pr
+      mode: execute
+      delegate: shift.create_pr
+      requires_approval: true
+      context:
+        dynamic:
+          - from: classify_bug_type
+            select: [bug_type, rationale]
+          - from: validate_fix
+            select: [compile_ok, tests_passed, fix_verified]
