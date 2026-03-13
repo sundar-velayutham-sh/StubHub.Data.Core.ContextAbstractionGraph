@@ -206,6 +206,8 @@ class StepDef:
     budget: Budget | None
     transitions: list[dict] | None
     fallback_on_failure: str | None = None
+    cache_as: str | None = None
+    context_cache: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

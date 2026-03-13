@@ -91,6 +91,7 @@ class WorkflowRun:
         self._assembler = assembler
         self._walker = Walker(workflow.steps)
         self._prior_outputs: dict[str, Any] = {}
+        self._schema_cache: dict[str, Any] = {}
         self._status = "running"
         self._trace = TraceWriter(run_id, Path(tempfile.gettempdir()) / "dcag-runs")
         self._trace.record_start(workflow.id, inputs, config_hash)
@@ -121,6 +122,7 @@ class WorkflowRun:
                 persona=self._persona,
                 prior_outputs=self._prior_outputs,
                 workflow_inputs=self._inputs,
+                schema_cache=self._schema_cache,
             )
 
         elif step.mode == "execute" and step.execute_type == "script":
@@ -177,6 +179,11 @@ class WorkflowRun:
                     return
 
             self._prior_outputs[step_id] = outcome.output
+
+            # Populate schema cache if step declares cache_as
+            if step.cache_as and isinstance(outcome.output, dict):
+                self._schema_cache[step.cache_as] = outcome.output
+
             self._trace.record_step(
                 step_id=step_id, mode=step.mode, status="completed",
                 duration_ms=duration_ms, output=outcome.output,

@@ -62,12 +62,21 @@ class ContextAssembler:
                 result[ref] = prior_outputs[ref]
         return result
 
+    def build_cache(self, cache_refs: list[str], schema_cache: dict[str, Any]) -> dict[str, Any]:
+        """Load cached metadata entries by key."""
+        result: dict[str, Any] = {}
+        for ref in cache_refs:
+            if ref in schema_cache:
+                result[ref] = schema_cache[ref]
+        return result
+
     def assemble_reason(
         self,
         step: StepDef,
         persona: PersonaBundle,
         prior_outputs: dict[str, Any],
         workflow_inputs: dict[str, Any],
+        schema_cache: dict[str, Any] | None = None,
     ) -> ReasonRequest:
         """Assemble a full ReasonRequest for a reason step."""
         # Merge knowledge refs into domain knowledge
@@ -91,6 +100,10 @@ class ContextAssembler:
 
         static = self.build_static(step.context_static)
         dynamic = self.build_dynamic(step.context_dynamic, prior_outputs)
+
+        cached = self.build_cache(step.context_cache, schema_cache or {})
+        if cached:
+            dynamic.update(cached)
 
         # Filter tools through registry if available
         available_tools = self._registry.resolve_available(step.tools) if self._registry else step.tools

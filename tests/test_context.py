@@ -131,3 +131,42 @@ class TestToolFiltering:
             workflow_inputs={"model_name": "test", "column_name": "pcid"},
         )
         assert request_degraded.context.estimated_tokens < request_full.context.estimated_tokens
+
+
+class TestSchemaCache:
+    """Tests for schema cache assembly."""
+
+    def test_build_cache_returns_matching_entries(self, assembler):
+        """build_cache returns only the requested cache keys."""
+        cache = {"table_columns": {"col1": "VARCHAR"}, "storage_metrics": {"bytes": 1024}}
+        result = assembler.build_cache(["table_columns"], cache)
+        assert "table_columns" in result
+        assert "storage_metrics" not in result
+
+    def test_build_cache_empty_refs(self, assembler):
+        """No cache refs returns empty dict."""
+        cache = {"table_columns": {"col1": "VARCHAR"}}
+        result = assembler.build_cache([], cache)
+        assert result == {}
+
+    def test_build_cache_missing_key_skipped(self, assembler):
+        """Missing cache key is silently skipped (not an error)."""
+        cache = {"table_columns": {"col1": "VARCHAR"}}
+        result = assembler.build_cache(["table_columns", "nonexistent"], cache)
+        assert "table_columns" in result
+        assert "nonexistent" not in result
+
+    def test_build_cache_empty_cache(self, assembler):
+        """Empty cache with refs returns empty dict."""
+        result = assembler.build_cache(["table_columns"], {})
+        assert result == {}
+
+    def test_build_cache_all_keys(self, assembler):
+        """Multiple keys all found."""
+        cache = {
+            "table_columns": {"col1": "VARCHAR"},
+            "storage_metrics": {"bytes": 1024},
+            "row_count": 50000,
+        }
+        result = assembler.build_cache(["table_columns", "storage_metrics", "row_count"], cache)
+        assert len(result) == 3

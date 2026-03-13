@@ -170,4 +170,6 @@ class WorkflowLoader:
             budget=budget,
             transitions=raw.get("transitions"),
             fallback_on_failure=raw.get("fallback_on_failure"),
+            cache_as=raw.get("cache_as"),
+            context_cache=ctx.get("cache", []),
         )
