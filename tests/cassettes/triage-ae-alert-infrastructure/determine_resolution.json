@@ -1,0 +1,17 @@
+{
+  "output": {
+    "resolution_type": "acknowledge_transient",
+    "suggested_actions": ["No action needed — self-resolved", "If recurring 5+ times, file Snowflake support ticket"],
+    "who_to_tag": null,
+    "urgency": "low"
+  },
+  "decision_log": {
+    "decision": "Acknowledge as transient — no action needed",
+    "rationale": "The error is a known Snowflake transient internal error that self-resolved on the next run. Only 3 occurrences in 7 days, below the threshold for a support ticket.",
+    "alternatives_considered": ["escalate_to_de — but error self-resolved and is below ticket threshold"],
+    "confidence": "high",
+    "informed_by": ["classify_alert.classification", "diagnose_infrastructure.is_transient"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2000, "completion": 400}
+}

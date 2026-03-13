@@ -1,0 +1,15 @@
+{
+  "output": {
+    "thread_summary": "TRIAGE: cs_chatbot_conversation_agg — invalid_identifier\nRoot cause: Transient upstream schema change (CONVERSATIONID temporarily unavailable)\nImpact: 0 cascade models\nResolution: acknowledge_transient\nOwner: @corinne.smallwood",
+    "investigation_report": "# Triage Report: cs_chatbot_conversation_agg\n\n## Error Details\n- **Model**: cs_chatbot_conversation_agg\n- **DAG**: transform_cx__daily\n- **Error**: SQL compilation error: invalid identifier 'CONVERSATIONID'\n- **Error Code**: 000904\n\n## Failure History\n- 10 failures in last 7 days (recurring since 2026-03-03)\n- Last success: 2026-03-02\n\n## Cascade Analysis\n- No cascade failures detected\n\n## Root Cause\nColumn CONVERSATIONID temporarily unavailable in upstream source DW.NLP.LLM_FUNCTION_CALL_DATA during schema rebuild on 2026-03-03.\n\n## Resolution\n- Type: acknowledge_transient\n- Actions: Verify column exists now, add source freshness test, add schema contract\n- Owner: @corinne.smallwood"
+  },
+  "decision_log": {
+    "decision": "Generated triage report with thread summary and full investigation",
+    "rationale": "Compiled all prior step outputs into a concise thread summary and detailed Markdown investigation report.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["all prior steps"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 3500, "completion": 800}
+}

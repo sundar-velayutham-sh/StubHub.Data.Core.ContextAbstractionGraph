@@ -1,0 +1,20 @@
+{
+  "output": {
+    "is_recurring": true,
+    "failure_count_7d": 10,
+    "first_failure": "2026-03-03",
+    "last_success": "2026-03-02",
+    "pattern": "recurring"
+  },
+  "decision_log": {
+    "decision": "Model has been failing consistently since 2026-03-03",
+    "rationale": "10 failures in 7 days with last success on 2026-03-02. Pattern is recurring — every scheduled run since 03-03 has failed with the same invalid identifier error.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_RUN_RESULTS 7-day history"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT STATUS, CREATED_AT, EXECUTION_TIME, MESSAGE FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE NAME = 'cs_chatbot_conversation_agg' AND CREATED_AT >= DATEADD(day, -7, CURRENT_TIMESTAMP()) ORDER BY CREATED_AT DESC"}
+  ],
+  "token_usage": {"prompt": 1800, "completion": 400}
+}

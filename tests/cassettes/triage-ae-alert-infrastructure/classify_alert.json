@@ -1,0 +1,16 @@
+{
+  "output": {
+    "classification": "internal_error",
+    "confidence": "high",
+    "rationale": "Error 300005 is a known Snowflake transient internal error. Processing aborted message confirms infrastructure-level failure."
+  },
+  "decision_log": {
+    "decision": "Classified as internal_error based on error code 300005",
+    "rationale": "Error code 300005 is a well-known Snowflake transient internal error. The 'Processing aborted' message and intermittent pattern confirm this is an infrastructure issue, not a code or data problem.",
+    "alternatives_considered": ["timeout — but error code is specific to internal error"],
+    "confidence": "high",
+    "informed_by": ["parse_alert.error_code", "parse_alert.error_message"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2500, "completion": 300}
+}

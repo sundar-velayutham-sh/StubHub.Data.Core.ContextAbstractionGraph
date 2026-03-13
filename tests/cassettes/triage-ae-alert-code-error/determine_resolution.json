@@ -1,0 +1,17 @@
+{
+  "output": {
+    "resolution_type": "acknowledge_transient",
+    "suggested_actions": ["Verify column exists now", "Add source freshness test", "Add schema contract"],
+    "who_to_tag": "@corinne.smallwood",
+    "urgency": "low"
+  },
+  "decision_log": {
+    "decision": "Acknowledge as transient upstream schema issue",
+    "rationale": "The invalid identifier is caused by a transient upstream schema rebuild. Column may already be restored. Recommended preventive actions: source freshness test and schema contract to catch future schema changes early.",
+    "alternatives_considered": ["escalate_to_owner — but issue is transient, not a code bug"],
+    "confidence": "high",
+    "informed_by": ["classify_alert.classification", "diagnose_code_error.root_cause"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2000, "completion": 400}
+}

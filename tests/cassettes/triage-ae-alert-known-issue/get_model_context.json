@@ -1,0 +1,25 @@
+{
+  "output": {
+    "model_sql": null,
+    "owner": "@kavya.jain",
+    "tags": ["apex_experimentation", "daily"],
+    "schedule": "daily",
+    "materialization": "test",
+    "upstream_models": ["participation_fact_enriched"],
+    "downstream_models": [],
+    "recent_commits": [],
+    "model_path": "models/mart/experimentation/combined_v1_v2/_participation_fact_enriched.yml"
+  },
+  "decision_log": {
+    "decision": "Gathered test context from DBT_MODELS",
+    "rationale": "This is a dbt test (not a model), owned by @kavya.jain. It tests participation_fact_enriched and is part of the apex_experimentation tag group. No model SQL exists — it's defined in a YAML test file.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_MODELS", "GitHub API"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT NAME, MATERIALIZATION, SCHEMA_NAME, TAGS, JSON_EXTRACT_PATH_TEXT(META, 'owner') as owner FROM DW.DATAOPS_DBT.DBT_MODELS WHERE NAME = 'apex_participation_matches_participation_fact_enriched_12'"},
+    {"tool": "github_cli.read_file", "input": "models/mart/experimentation/combined_v1_v2/_participation_fact_enriched.yml"}
+  ],
+  "token_usage": {"prompt": 2200, "completion": 500}
+}

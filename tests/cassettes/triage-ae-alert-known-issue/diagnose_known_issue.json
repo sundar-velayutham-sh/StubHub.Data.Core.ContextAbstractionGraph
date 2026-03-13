@@ -1,0 +1,21 @@
+{
+  "output": {
+    "root_cause": "Known lag in experimentation pipeline causes participation count mismatch. Experimentation team is aware.",
+    "is_self_resolved": false,
+    "should_suppress": true,
+    "usage_last_30d": 0,
+    "recommendation": "Exclude from critical AE alerting — Experimentation team handles this directly"
+  },
+  "decision_log": {
+    "decision": "Known issue — experimentation pipeline lag causes persistent mismatch",
+    "rationale": "The participation test compares apex v1 vs v2 participation counts. Known lag in the experimentation pipeline causes mismatches that the experimentation team monitors independently. Zero queries against this test in the last 30 days confirms no external consumers rely on it.",
+    "alternatives_considered": ["escalate_to_owner — but team is already aware"],
+    "confidence": "high",
+    "informed_by": ["DBT_RUN_RESULTS history", "QUERY_HISTORY usage check"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT STATUS, CREATED_AT FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE NAME = 'apex_participation_matches_participation_fact_enriched_12' ORDER BY CREATED_AT DESC LIMIT 5"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT COUNT(*) as query_count FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY WHERE QUERY_TEXT ILIKE '%apex_participation_matches%' AND START_TIME >= DATEADD(day, -30, CURRENT_TIMESTAMP()) AND USER_NAME NOT IN ('ORCHESTRATION_PROD')"}
+  ],
+  "token_usage": {"prompt": 3000, "completion": 600}
+}

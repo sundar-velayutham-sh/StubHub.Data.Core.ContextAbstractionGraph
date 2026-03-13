@@ -1,0 +1,21 @@
+{
+  "output": {
+    "root_cause": "Column CONVERSATIONID temporarily unavailable in upstream source DW.NLP.LLM_FUNCTION_CALL_DATA during schema rebuild on 2026-03-03",
+    "affected_line": 78,
+    "proposed_fix": "Add source freshness test + schema contract for CONVERSATIONID column",
+    "fix_type": "schema_change",
+    "diagnostic_queries_run": ["INFORMATION_SCHEMA.COLUMNS check", "DBT_RUN_RESULTS history"]
+  },
+  "decision_log": {
+    "decision": "Root cause is upstream schema change removing CONVERSATIONID",
+    "rationale": "INFORMATION_SCHEMA.COLUMNS query shows CONVERSATIONID does not currently exist in DW_NLP.LLM_FUNCTION_CALL_DATA. Column was available until 2026-03-03 schema rebuild. This is a transient upstream schema issue.",
+    "alternatives_considered": ["Column rename — but no similarly named column found", "Permission issue — but other columns accessible"],
+    "confidence": "high",
+    "informed_by": ["INFORMATION_SCHEMA.COLUMNS", "DBT_RUN_RESULTS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT COLUMN_NAME FROM DW_NLP.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'LLM_FUNCTION_CALL_DATA' AND COLUMN_NAME ILIKE '%CONVERSATION%'"},
+    {"tool": "snowflake_mcp.describe_table", "input": "DW_NLP.LLM_FUNCTION_CALL_DATA"}
+  ],
+  "token_usage": {"prompt": 3000, "completion": 700}
+}

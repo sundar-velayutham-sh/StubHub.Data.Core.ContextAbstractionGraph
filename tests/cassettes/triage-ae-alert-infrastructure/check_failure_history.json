@@ -1,0 +1,20 @@
+{
+  "output": {
+    "is_recurring": true,
+    "failure_count_7d": 3,
+    "first_failure": "2026-03-08",
+    "last_success": "2026-03-12",
+    "pattern": "intermittent"
+  },
+  "decision_log": {
+    "decision": "Intermittent failure pattern — 3 failures in 7 days with successes in between",
+    "rationale": "3 failures scattered across the week with successful runs in between. Most recent run after the failure succeeded. Classic intermittent/transient pattern.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_RUN_RESULTS 7-day history"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT STATUS, CREATED_AT, EXECUTION_TIME, MESSAGE FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE NAME = 'seller_event_day_listing_agg' AND CREATED_AT >= DATEADD(day, -7, CURRENT_TIMESTAMP()) ORDER BY CREATED_AT DESC"}
+  ],
+  "token_usage": {"prompt": 1800, "completion": 400}
+}

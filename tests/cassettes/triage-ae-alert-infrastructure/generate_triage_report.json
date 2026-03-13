@@ -1,0 +1,15 @@
+{
+  "output": {
+    "thread_summary": "TRIAGE: seller_event_day_listing_agg — internal_error\nRoot cause: Transient Snowflake error (300005), self-resolved\nImpact: 0 cascade\nResolution: acknowledge_transient\nNo action needed",
+    "investigation_report": "# Triage Report: seller_event_day_listing_agg\n\n## Error Details\n- **Model**: seller_event_day_listing_agg\n- **DAG**: transform_core__hourly\n- **Error**: SQL execution internal error: Processing aborted due to error 300005\n\n## Failure History\n- 3 failures in last 7 days (intermittent pattern)\n- Self-resolved on next run\n\n## Cascade Analysis\n- No cascade failures\n\n## Root Cause\nTransient Snowflake internal error (300005). No warehouse contention. Self-resolved.\n\n## Resolution\n- Type: acknowledge_transient\n- No action needed unless recurring 5+ times"
+  },
+  "decision_log": {
+    "decision": "Generated triage report with thread summary and full investigation",
+    "rationale": "Compiled all prior step outputs into a concise thread summary and detailed Markdown investigation report.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["all prior steps"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 3500, "completion": 800}
+}

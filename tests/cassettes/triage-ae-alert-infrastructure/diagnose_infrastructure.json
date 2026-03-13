@@ -1,0 +1,20 @@
+{
+  "output": {
+    "root_cause": "Transient Snowflake internal error (300005). Self-resolved on next run. No warehouse contention detected.",
+    "blocking_queries": [],
+    "warehouse_utilization": "normal",
+    "is_transient": true,
+    "diagnostic_queries_run": ["QUERY_HISTORY check", "warehouse queue depth"]
+  },
+  "decision_log": {
+    "decision": "Transient Snowflake internal error — self-resolved",
+    "rationale": "QUERY_HISTORY shows the model succeeded on the next hourly run. Warehouse queue depth was normal at the time of failure. No blocking queries detected. This is a known Snowflake transient error that self-resolves.",
+    "alternatives_considered": ["warehouse_contention — but utilization was normal"],
+    "confidence": "high",
+    "informed_by": ["QUERY_HISTORY", "warehouse queue depth"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT QUERY_TYPE, TOTAL_ELAPSED_TIME/1000 as seconds, WAREHOUSE_NAME, QUERY_TEXT FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY WHERE START_TIME >= DATEADD(hour, -2, CURRENT_TIMESTAMP()) AND WAREHOUSE_NAME = 'TRANSFORM_M' ORDER BY TOTAL_ELAPSED_TIME DESC LIMIT 10"}
+  ],
+  "token_usage": {"prompt": 3000, "completion": 600}
+}

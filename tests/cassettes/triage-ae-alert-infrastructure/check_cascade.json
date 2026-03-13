@@ -1,0 +1,19 @@
+{
+  "output": {
+    "is_cascade": false,
+    "cascade_count": 0,
+    "root_model": "seller_event_day_listing_agg",
+    "affected_models": []
+  },
+  "decision_log": {
+    "decision": "No cascade failures detected",
+    "rationale": "No other models failed in the same time window. The internal error affected only this model.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_RUN_RESULTS cascade query"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT NAME, STATUS, MESSAGE, CREATED_AT FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE STATUS = 'error' AND CREATED_AT BETWEEN DATEADD(hour, -1, '2026-03-12T10:00:00') AND DATEADD(hour, 1, '2026-03-12T10:00:00') ORDER BY CREATED_AT ASC"}
+  ],
+  "token_usage": {"prompt": 1600, "completion": 350}
+}

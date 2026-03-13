@@ -1,0 +1,19 @@
+{
+  "output": {
+    "is_cascade": true,
+    "cascade_count": 2,
+    "root_model": "gpm_repeat_buyer_dim",
+    "affected_models": ["gpm_buyer_metrics", "unique_gpm_repeat_buyer_dim_test"]
+  },
+  "decision_log": {
+    "decision": "Cascade detected — 2 downstream models affected",
+    "rationale": "gpm_buyer_metrics and the unique test both failed in the same time window, caused by gpm_repeat_buyer_dim failure propagating downstream.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_RUN_RESULTS cascade query"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT NAME, STATUS, MESSAGE, CREATED_AT FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE STATUS = 'error' AND CREATED_AT BETWEEN DATEADD(hour, -1, '2026-03-12T06:00:00') AND DATEADD(hour, 1, '2026-03-12T06:00:00') ORDER BY CREATED_AT ASC"}
+  ],
+  "token_usage": {"prompt": 1600, "completion": 400}
+}

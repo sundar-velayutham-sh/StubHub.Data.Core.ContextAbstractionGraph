@@ -1,0 +1,17 @@
+{
+  "output": {
+    "resolution_type": "recommend_suppression",
+    "suggested_actions": ["Exclude this test from critical AE alerting path", "Experimentation team (@kavya.jain) handles this directly"],
+    "who_to_tag": "@kavya.jain",
+    "urgency": "low"
+  },
+  "decision_log": {
+    "decision": "Recommend suppression — known noise, wrong alert routing",
+    "rationale": "This test failure is a known issue managed by the experimentation team. It should not route to AE on-call. Recommend excluding from the critical alerting path to reduce alert fatigue.",
+    "alternatives_considered": ["escalate_to_owner — but suppression is more appropriate since team is already aware"],
+    "confidence": "high",
+    "informed_by": ["classify_alert.classification", "diagnose_known_issue.should_suppress"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2000, "completion": 400}
+}

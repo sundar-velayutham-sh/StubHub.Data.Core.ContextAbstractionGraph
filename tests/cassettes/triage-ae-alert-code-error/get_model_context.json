@@ -1,0 +1,25 @@
+{
+  "output": {
+    "model_sql": "WITH conversation_details AS (SELECT CONVERSATIONID, AGENT_NAME, RESOLUTION FROM DW_NLP.LLM_FUNCTION_CALL_DATA WHERE EVENT_DATE >= DATEADD(day, -30, CURRENT_DATE()))",
+    "owner": "@corinne.smallwood",
+    "tags": ["cs", "semidaily"],
+    "schedule": "semidaily",
+    "materialization": "table",
+    "upstream_models": ["dw_nlp.llm_function_call_data"],
+    "downstream_models": ["cs_chatbot_metrics"],
+    "recent_commits": [],
+    "model_path": "models/mart/ops/cs/cs_chatbot_conversation_agg.sql"
+  },
+  "decision_log": {
+    "decision": "Gathered full model context from DBT_MODELS and GitHub",
+    "rationale": "Model is a table materialization owned by @corinne.smallwood, tagged cs/semidaily. Upstream is dw_nlp.llm_function_call_data. No recent commits found in last 48h.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_MODELS", "GitHub API"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT NAME, MATERIALIZATION, SCHEMA_NAME, TAGS, JSON_EXTRACT_PATH_TEXT(META, 'owner') as owner FROM DW.DATAOPS_DBT.DBT_MODELS WHERE NAME = 'cs_chatbot_conversation_agg'"},
+    {"tool": "github_cli.read_file", "input": "models/mart/ops/cs/cs_chatbot_conversation_agg.sql"}
+  ],
+  "token_usage": {"prompt": 2200, "completion": 600}
+}

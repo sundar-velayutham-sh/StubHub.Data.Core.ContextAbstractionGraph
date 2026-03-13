@@ -1,0 +1,20 @@
+{
+  "output": {
+    "is_recurring": true,
+    "failure_count_7d": 7,
+    "first_failure": "2026-03-06",
+    "last_success": "2026-03-05",
+    "pattern": "recurring"
+  },
+  "decision_log": {
+    "decision": "Recurring failure — 7 failures in 7 days",
+    "rationale": "This test has failed every day for the past 7 days. Last success was 2026-03-05. The failure count matches the number of scheduled runs, indicating consistent failure.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_RUN_RESULTS 7-day history"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT STATUS, CREATED_AT, EXECUTION_TIME, MESSAGE FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE NAME = 'apex_participation_matches_participation_fact_enriched_12' AND CREATED_AT >= DATEADD(day, -7, CURRENT_TIMESTAMP()) ORDER BY CREATED_AT DESC"}
+  ],
+  "token_usage": {"prompt": 1800, "completion": 400}
+}

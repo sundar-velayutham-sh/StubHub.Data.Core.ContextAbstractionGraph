@@ -1,0 +1,25 @@
+{
+  "output": {
+    "model_sql": "WITH source AS (SELECT anon_id, experiment_id, variant, participation_date FROM participation_fact_enriched), random_sample AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY anon_id, experiment_id ORDER BY participation_date DESC) as rn FROM source)",
+    "owner": "@albert.hu",
+    "tags": ["pricing", "daily"],
+    "schedule": "daily",
+    "materialization": "table",
+    "upstream_models": ["participation_fact_enriched", "buyer_dim"],
+    "downstream_models": ["gpm_buyer_metrics", "gpm_pricing_report"],
+    "recent_commits": [],
+    "model_path": "models/mart/pricing/gpm/dim/gpm_repeat_buyer_dim.sql"
+  },
+  "decision_log": {
+    "decision": "Gathered full model context from DBT_MODELS and GitHub",
+    "rationale": "Model is a table materialization owned by @albert.hu, tagged pricing/daily. Upstream includes participation_fact_enriched and buyer_dim. No recent commits in last 48h.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_MODELS", "GitHub API"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT NAME, MATERIALIZATION, SCHEMA_NAME, TAGS, JSON_EXTRACT_PATH_TEXT(META, 'owner') as owner FROM DW.DATAOPS_DBT.DBT_MODELS WHERE NAME = 'gpm_repeat_buyer_dim'"},
+    {"tool": "github_cli.read_file", "input": "models/mart/pricing/gpm/dim/gpm_repeat_buyer_dim.sql"}
+  ],
+  "token_usage": {"prompt": 2200, "completion": 600}
+}

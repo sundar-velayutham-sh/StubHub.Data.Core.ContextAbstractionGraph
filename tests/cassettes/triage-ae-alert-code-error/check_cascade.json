@@ -1,0 +1,19 @@
+{
+  "output": {
+    "is_cascade": false,
+    "cascade_count": 0,
+    "root_model": "cs_chatbot_conversation_agg",
+    "affected_models": []
+  },
+  "decision_log": {
+    "decision": "No cascade failures detected",
+    "rationale": "No other models failed in the +/- 1 hour window around the alert. cs_chatbot_conversation_agg is the only failing model in this DAG run.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_RUN_RESULTS cascade query"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT NAME, STATUS, MESSAGE, CREATED_AT FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE STATUS = 'error' AND CREATED_AT BETWEEN DATEADD(hour, -1, '2026-03-12T08:00:00') AND DATEADD(hour, 1, '2026-03-12T08:00:00') ORDER BY CREATED_AT ASC"}
+  ],
+  "token_usage": {"prompt": 1600, "completion": 350}
+}

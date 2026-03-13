@@ -1,0 +1,16 @@
+{
+  "output": {
+    "classification": "recurring_transient",
+    "confidence": "high",
+    "rationale": "Same test has failed 7 times in 7 days, known experimentation pipeline lag. This is a recurring transient issue handled by the experimentation team."
+  },
+  "decision_log": {
+    "decision": "Classified as recurring_transient based on failure pattern",
+    "rationale": "7 consecutive failures in 7 days with no self-resolution. The test monitors participation data consistency which is known to lag. This matches the recurring_transient pattern — a known issue that doesn't require AE on-call intervention.",
+    "alternatives_considered": ["flaky_test — but this is consistent failure, not intermittent"],
+    "confidence": "high",
+    "informed_by": ["check_failure_history.pattern", "check_failure_history.failure_count_7d"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2500, "completion": 300}
+}

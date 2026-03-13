@@ -1,0 +1,16 @@
+{
+  "output": {
+    "classification": "duplicate_row",
+    "confidence": "high",
+    "rationale": "Error code 100090 indicates duplicate row during DML action. This is a data quality issue caused by upstream join fanout."
+  },
+  "decision_log": {
+    "decision": "Classified as duplicate_row based on error code and message",
+    "rationale": "Error code 100090 is Snowflake's specific error for duplicate rows during DML action. The model uses MERGE or INSERT with unique constraints that are violated.",
+    "alternatives_considered": ["upstream_data — but the immediate error is duplicate_row"],
+    "confidence": "high",
+    "informed_by": ["parse_alert.error_message", "parse_alert.error_code"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2500, "completion": 300}
+}

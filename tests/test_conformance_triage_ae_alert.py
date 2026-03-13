@@ -27,16 +27,11 @@ def load_conformance(workflow_id: str) -> dict:
 class TestTriageAeAlertConformance:
     """Validate that triage-ae-alert assembles correct context per step.
 
-    Walks the code_error branch (invalid_identifier classification) to
-    validate conformance for the branching path.
+    Walks the code_error branch to validate conformance for the branching path.
     """
 
     WORKFLOW_ID = "triage-ae-alert"
-    INPUTS = {
-        "alert_text": "FIRING: dbt model stg_ticket_listing failed — invalid identifier 'TICKET_PRICE'",
-        "channel_id": "C0123456789",
-        "thread_ts": "1710000000.000000",
-    }
+    INPUTS = {"alert_text": "cs_chatbot_conversation_agg failed: SQL compilation error: invalid identifier 'CONVERSATIONID'"}
 
     @pytest.fixture
     def conformance(self):
@@ -69,58 +64,55 @@ class TestTriageAeAlertConformance:
 
         step_outputs = {
             "parse_alert": {
-                "model_name": "stg_ticket_listing",
-                "dag_name": "core_data_dbt",
-                "task_name": "run_stg_ticket_listing",
-                "error_message": "SQL compilation error: invalid identifier 'TICKET_PRICE'",
-                "error_code": "002003",
-                "priority": "critical",
-                "alert_url": "https://incident.io/alerts/12345",
+                "model_name": "cs_chatbot_conversation_agg",
+                "dag_name": "transform_cx__daily",
+                "task_name": "cs_chatbot_conversation_agg",
+                "error_message": "SQL compilation error: invalid identifier 'CONVERSATIONID'",
+                "error_code": "000904",
+                "priority": "In-hours",
             },
             "check_failure_history": {
-                "is_recurring": False,
-                "failure_count_7d": 1,
-                "first_failure": "2026-03-12T08:00:00Z",
-                "last_success": "2026-03-12T04:00:00Z",
-                "pattern": "new",
+                "is_recurring": True,
+                "failure_count_7d": 10,
+                "first_failure": "2026-03-03",
+                "last_success": "2026-03-02",
+                "pattern": "recurring",
             },
             "check_cascade": {
                 "is_cascade": False,
-                "cascade_count": 1,
-                "root_model": "stg_ticket_listing",
-                "affected_models": ["stg_ticket_listing"],
+                "cascade_count": 0,
+                "root_model": "cs_chatbot_conversation_agg",
+                "affected_models": [],
             },
             "get_model_context": {
-                "model_sql": "SELECT TICKET_PRICE FROM {{ source('raw', 'ticket_listing') }}",
-                "owner": "data-eng",
-                "tags": ["core", "daily"],
-                "materialization": "view",
-                "upstream_models": [],
-                "downstream_models": ["int_ticket_sales"],
-                "recent_commits": [{"sha": "abc123", "message": "rename column", "date": "2026-03-12"}],
-                "model_path": "models/staging/ticket/stg_ticket_listing.sql",
+                "model_sql": "WITH conversation_details AS ...",
+                "owner": "@corinne.smallwood",
+                "tags": ["cs", "semidaily"],
+                "materialization": "table",
+                "upstream_models": ["dw_nlp.llm_function_call_data"],
+                "downstream_models": ["cs_chatbot_metrics"],
+                "recent_commits": [],
+                "model_path": "models/mart/ops/cs/cs_chatbot_conversation_agg.sql",
             },
             "classify_alert": {
                 "classification": "invalid_identifier",
                 "confidence": "high",
-                "rationale": "Error message contains 'invalid identifier'",
+                "rationale": "Error contains invalid identifier pattern",
             },
             "diagnose_code_error": {
-                "root_cause": "Column TICKET_PRICE was renamed to LISTING_PRICE in upstream source",
-                "proposed_fix": "Update column reference from TICKET_PRICE to LISTING_PRICE",
-                "diagnostic_queries_run": [
-                    "SELECT COLUMN_NAME FROM DW.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TICKET_LISTING'"
-                ],
+                "root_cause": "Column CONVERSATIONID temporarily unavailable",
+                "proposed_fix": "Add source freshness test",
+                "diagnostic_queries_run": ["INFORMATION_SCHEMA.COLUMNS check"],
             },
             "determine_resolution": {
-                "resolution_type": "fix_directly",
-                "suggested_actions": ["Create PR to rename TICKET_PRICE to LISTING_PRICE", "Run dbt test after merge"],
-                "who_to_tag": "data-eng",
-                "urgency": "in-hours",
+                "resolution_type": "acknowledge_transient",
+                "suggested_actions": ["Verify column exists now"],
+                "who_to_tag": "@corinne.smallwood",
+                "urgency": "low",
             },
             "generate_triage_report": {
-                "thread_summary": "TRIAGE: stg_ticket_listing — invalid_identifier\nRoot cause: Column renamed upstream",
-                "investigation_report": "# Investigation Report\n\n## Error Details\n...",
+                "thread_summary": "TRIAGE: cs_chatbot_conversation_agg — invalid_identifier",
+                "investigation_report": "# Full report...",
             },
         }
 
@@ -172,252 +164,7 @@ class TestTriageAeAlertConformance:
             if isinstance(request, ReasonRequest):
                 run.record_result(step_id, StepSuccess(output=step_outputs.get(step_id, {"placeholder": True})))
             elif isinstance(request, DelegateRequest):
-                run.record_result(step_id, StepSuccess(output={"posted": True}))
-
-    def test_data_issue_branch_path(self, engine, conformance):
-        """Walk the data_issue branch (duplicate_row classification)."""
-        run = engine.start(self.WORKFLOW_ID, self.INPUTS)
-
-        step_outputs = {
-            "parse_alert": {
-                "model_name": "fct_order",
-                "dag_name": "core_data_dbt",
-                "task_name": "run_fct_order",
-                "error_message": "Duplicate row detected in merge",
-                "error_code": None,
-                "priority": "critical",
-                "alert_url": "https://incident.io/alerts/12346",
-            },
-            "check_failure_history": {
-                "is_recurring": False,
-                "failure_count_7d": 1,
-                "first_failure": "2026-03-12T08:00:00Z",
-                "last_success": "2026-03-12T04:00:00Z",
-                "pattern": "new",
-            },
-            "check_cascade": {
-                "is_cascade": False,
-                "cascade_count": 1,
-                "root_model": "fct_order",
-                "affected_models": ["fct_order"],
-            },
-            "get_model_context": {
-                "model_sql": "SELECT * FROM {{ ref('int_order') }}",
-                "owner": "analytics",
-                "tags": ["core"],
-                "materialization": "incremental",
-                "upstream_models": ["int_order"],
-                "downstream_models": ["rpt_daily_orders"],
-                "recent_commits": [],
-                "model_path": "models/marts/fct_order.sql",
-            },
-            "classify_alert": {
-                "classification": "duplicate_row",
-                "confidence": "high",
-                "rationale": "Error message contains 'Duplicate row'",
-            },
-            "diagnose_data_issue": {
-                "root_cause": "Upstream backfill introduced duplicate order_ids",
-                "diagnostic_queries_run": ["SELECT order_id, COUNT(*) FROM fct_order GROUP BY 1 HAVING COUNT(*) > 1"],
-                "affected_row_count": 42,
-            },
-            "determine_resolution": {
-                "resolution_type": "escalate_to_owner",
-                "suggested_actions": ["Tag analytics team", "Deduplicate upstream"],
-                "who_to_tag": "analytics",
-                "urgency": "in-hours",
-            },
-            "generate_triage_report": {
-                "thread_summary": "TRIAGE: fct_order — duplicate_row",
-                "investigation_report": "# Investigation\n...",
-            },
-        }
-
-        # Data issue path
-        data_issue_path = [
-            "parse_alert",
-            "check_failure_history",
-            "check_cascade",
-            "get_model_context",
-            "classify_alert",
-            "diagnose_data_issue",
-            "determine_resolution",
-            "generate_triage_report",
-            "post_to_thread",
-        ]
-
-        for step_id in data_issue_path:
-            request = run.next_step()
-            assert request is not None, f"Workflow ended before step '{step_id}'"
-            assert request.step_id == step_id, f"Expected step '{step_id}', got '{request.step_id}'"
-
-            if isinstance(request, ReasonRequest):
-                run.record_result(step_id, StepSuccess(output=step_outputs.get(step_id, {"placeholder": True})))
-            elif isinstance(request, DelegateRequest):
-                run.record_result(step_id, StepSuccess(output={"posted": True}))
-
-    def test_infrastructure_branch_path(self, engine, conformance):
-        """Walk the infrastructure branch (internal_error classification)."""
-        run = engine.start(self.WORKFLOW_ID, self.INPUTS)
-
-        step_outputs = {
-            "parse_alert": {
-                "model_name": "fct_event_sales",
-                "dag_name": "core_data_dbt",
-                "task_name": "run_fct_event_sales",
-                "error_message": "Processing aborted due to internal error",
-                "error_code": "300005",
-                "priority": "warning",
-                "alert_url": "https://incident.io/alerts/12347",
-            },
-            "check_failure_history": {
-                "is_recurring": True,
-                "failure_count_7d": 4,
-                "first_failure": "2026-03-06T08:00:00Z",
-                "last_success": "2026-03-12T04:00:00Z",
-                "pattern": "intermittent",
-            },
-            "check_cascade": {
-                "is_cascade": True,
-                "cascade_count": 5,
-                "root_model": "fct_event_sales",
-                "affected_models": ["fct_event_sales", "rpt_daily_sales", "rpt_venue_perf", "dim_event_agg", "rpt_weekly"],
-            },
-            "get_model_context": {
-                "model_sql": "SELECT * FROM {{ ref('int_event_sales') }}",
-                "owner": "data-eng",
-                "tags": ["core", "daily"],
-                "materialization": "incremental",
-                "upstream_models": ["int_event_sales"],
-                "downstream_models": ["rpt_daily_sales"],
-                "recent_commits": [],
-                "model_path": "models/marts/fct_event_sales.sql",
-            },
-            "classify_alert": {
-                "classification": "internal_error",
-                "confidence": "high",
-                "rationale": "Error code 300005 is a known Snowflake internal error",
-            },
-            "diagnose_infrastructure": {
-                "root_cause": "Snowflake transient internal error 300005",
-                "is_transient": True,
-                "diagnostic_queries_run": ["SELECT * FROM QUERY_HISTORY WHERE ..."],
-            },
-            "determine_resolution": {
-                "resolution_type": "acknowledge_transient",
-                "suggested_actions": ["Acknowledge in thread", "Monitor next run"],
-                "who_to_tag": "data-eng",
-                "urgency": "low",
-            },
-            "generate_triage_report": {
-                "thread_summary": "TRIAGE: fct_event_sales — internal_error (transient)",
-                "investigation_report": "# Investigation\n...",
-            },
-        }
-
-        infra_path = [
-            "parse_alert",
-            "check_failure_history",
-            "check_cascade",
-            "get_model_context",
-            "classify_alert",
-            "diagnose_infrastructure",
-            "determine_resolution",
-            "generate_triage_report",
-            "post_to_thread",
-        ]
-
-        for step_id in infra_path:
-            request = run.next_step()
-            assert request is not None, f"Workflow ended before step '{step_id}'"
-            assert request.step_id == step_id, f"Expected step '{step_id}', got '{request.step_id}'"
-
-            if isinstance(request, ReasonRequest):
-                run.record_result(step_id, StepSuccess(output=step_outputs.get(step_id, {"placeholder": True})))
-            elif isinstance(request, DelegateRequest):
-                run.record_result(step_id, StepSuccess(output={"posted": True}))
-
-    def test_known_issue_branch_path(self, engine, conformance):
-        """Walk the known_issue branch (recurring_transient classification)."""
-        run = engine.start(self.WORKFLOW_ID, self.INPUTS)
-
-        step_outputs = {
-            "parse_alert": {
-                "model_name": "rpt_marketshare",
-                "dag_name": "analytics_dbt",
-                "task_name": "run_rpt_marketshare",
-                "error_message": "Got 3 results, configured to fail if != 0",
-                "error_code": None,
-                "priority": "warning",
-                "alert_url": "https://incident.io/alerts/12348",
-            },
-            "check_failure_history": {
-                "is_recurring": True,
-                "failure_count_7d": 5,
-                "first_failure": "2026-03-06T02:00:00Z",
-                "last_success": "2026-03-11T02:00:00Z",
-                "pattern": "recurring",
-            },
-            "check_cascade": {
-                "is_cascade": False,
-                "cascade_count": 1,
-                "root_model": "rpt_marketshare",
-                "affected_models": ["rpt_marketshare"],
-            },
-            "get_model_context": {
-                "model_sql": "SELECT * FROM {{ ref('int_marketshare') }}",
-                "owner": "analytics",
-                "tags": ["analytics"],
-                "materialization": "table",
-                "upstream_models": ["int_marketshare"],
-                "downstream_models": [],
-                "recent_commits": [],
-                "model_path": "models/marts/rpt_marketshare.sql",
-            },
-            "classify_alert": {
-                "classification": "recurring_transient",
-                "confidence": "high",
-                "rationale": "Same test failure 5 times in 7 days, self-resolves on rerun",
-            },
-            "diagnose_known_issue": {
-                "root_cause": "Flaky test on rpt_marketshare — timing-dependent row count",
-                "is_self_resolved": True,
-                "should_suppress": True,
-                "recommendation": "Disable test or increase threshold",
-            },
-            "determine_resolution": {
-                "resolution_type": "recommend_suppression",
-                "suggested_actions": ["Discuss suppression with analytics team", "Disable test temporarily"],
-                "who_to_tag": "analytics",
-                "urgency": "low",
-            },
-            "generate_triage_report": {
-                "thread_summary": "TRIAGE: rpt_marketshare — recurring_transient",
-                "investigation_report": "# Investigation\n...",
-            },
-        }
-
-        known_issue_path = [
-            "parse_alert",
-            "check_failure_history",
-            "check_cascade",
-            "get_model_context",
-            "classify_alert",
-            "diagnose_known_issue",
-            "determine_resolution",
-            "generate_triage_report",
-            "post_to_thread",
-        ]
-
-        for step_id in known_issue_path:
-            request = run.next_step()
-            assert request is not None, f"Workflow ended before step '{step_id}'"
-            assert request.step_id == step_id, f"Expected step '{step_id}', got '{request.step_id}'"
-
-            if isinstance(request, ReasonRequest):
-                run.record_result(step_id, StepSuccess(output=step_outputs.get(step_id, {"placeholder": True})))
-            elif isinstance(request, DelegateRequest):
-                run.record_result(step_id, StepSuccess(output={"posted": True}))
+                run.record_result(step_id, StepSuccess(output={"approved": True}))
 
     def test_conformance_covers_all_steps(self, engine, conformance):
         """Ensure conformance spec covers every step in the workflow."""

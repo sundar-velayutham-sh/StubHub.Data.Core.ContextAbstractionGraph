@@ -1,0 +1,16 @@
+{
+  "output": {
+    "classification": "invalid_identifier",
+    "confidence": "high",
+    "rationale": "Error 'invalid identifier CONVERSATIONID' indicates column reference failure. Error code 000904 is Snowflake's SQL compilation error for unresolved identifiers."
+  },
+  "decision_log": {
+    "decision": "Classified as invalid_identifier based on error message pattern",
+    "rationale": "Error message explicitly contains 'invalid identifier' which maps directly to the invalid_identifier classification. Error code 000904 confirms SQL compilation error.",
+    "alternatives_considered": ["compilation_error — but invalid_identifier is more specific"],
+    "confidence": "high",
+    "informed_by": ["parse_alert.error_message", "parse_alert.error_code"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2500, "completion": 300}
+}

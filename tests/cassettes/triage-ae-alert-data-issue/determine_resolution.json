@@ -1,0 +1,17 @@
+{
+  "output": {
+    "resolution_type": "escalate_to_owner",
+    "suggested_actions": ["Tag @tao.yang to dedup participation_fact_enriched", "Rerun DAG after dedup", "Verify: SELECT COUNT(DISTINCT unique_key) FROM gpm_repeat_buyer_dim"],
+    "who_to_tag": "@tao.yang @albert.hu",
+    "urgency": "medium"
+  },
+  "decision_log": {
+    "decision": "Escalate to owner — upstream data fix required",
+    "rationale": "The root cause is upstream duplicate data in participation_fact_enriched. This requires the upstream owner (@tao.yang) to dedup the source table before gpm_repeat_buyer_dim can be rerun successfully.",
+    "alternatives_considered": ["fix_directly — but this is a data issue, not a code issue"],
+    "confidence": "high",
+    "informed_by": ["classify_alert.classification", "diagnose_data_issue.root_cause"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2000, "completion": 400}
+}

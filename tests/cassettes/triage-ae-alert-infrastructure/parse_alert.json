@@ -1,0 +1,21 @@
+{
+  "output": {
+    "model_name": "seller_event_day_listing_agg",
+    "dag_name": "transform_core__hourly",
+    "task_name": "seller_event_day_listing_agg",
+    "error_message": "SQL execution internal error: Processing aborted due to error 300005",
+    "error_code": "300005",
+    "priority": "Urgent"
+  },
+  "decision_log": {
+    "decision": "Parsed alert and queried DBT_RUN_RESULTS for error details",
+    "rationale": "Alert text contains model seller_event_day_listing_agg from transform_core__hourly DAG. DBT_RUN_RESULTS confirms Snowflake internal error 300005 (processing aborted).",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["alert_text", "DBT_RUN_RESULTS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT NAME, STATUS, MESSAGE, CREATED_AT, EXECUTION_TIME FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE NAME = 'seller_event_day_listing_agg' AND STATUS = 'error' ORDER BY CREATED_AT DESC LIMIT 1"}
+  ],
+  "token_usage": {"prompt": 1500, "completion": 500}
+}

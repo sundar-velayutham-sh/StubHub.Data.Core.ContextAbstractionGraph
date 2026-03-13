@@ -1,0 +1,21 @@
+{
+  "output": {
+    "root_cause": "Upstream backfill on participation_fact_enriched created duplicate anon_id + experiment_id combinations, causing join fanout in random_sample CTE",
+    "bad_data_sample": "1,247 duplicate unique_keys",
+    "upstream_source": "participation_fact_enriched",
+    "diagnostic_queries_run": ["unique_key duplicate check", "upstream participation query"],
+    "affected_row_count": 436168
+  },
+  "decision_log": {
+    "decision": "Root cause is upstream backfill creating duplicates",
+    "rationale": "Unique key duplicate check found 1,247 duplicate keys in participation_fact_enriched. These duplicates cause the random_sample CTE join to fan out, resulting in 436,168 extra rows that violate the unique constraint on gpm_repeat_buyer_dim.",
+    "alternatives_considered": ["Join logic error — but the SQL is correct, the data is wrong"],
+    "confidence": "high",
+    "informed_by": ["unique_key duplicate check", "upstream participation query"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT anon_id, experiment_id, COUNT(*) as cnt FROM participation_fact_enriched GROUP BY 1, 2 HAVING COUNT(*) > 1 LIMIT 10"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT MAX(CREATED_AT), COUNT(*) FROM participation_fact_enriched WHERE CREATED_AT >= DATEADD(day, -1, CURRENT_TIMESTAMP())"}
+  ],
+  "token_usage": {"prompt": 3000, "completion": 700}
+}

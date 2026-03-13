@@ -1,0 +1,21 @@
+{
+  "output": {
+    "model_name": "apex_participation_matches_participation_fact_enriched_12",
+    "dag_name": "monitor__severe_tests__hourly",
+    "task_name": "apex_participation_matches_participation_fact_enriched_12",
+    "error_message": "Got 436168 results, configured to fail if != 0",
+    "error_code": null,
+    "priority": "In-hours"
+  },
+  "decision_log": {
+    "decision": "Parsed alert and queried DBT_RUN_RESULTS for error details",
+    "rationale": "Alert text contains test apex_participation_matches_participation_fact_enriched_12 from monitor__severe_tests__hourly DAG. DBT_RUN_RESULTS confirms test failure with 436168 unexpected results.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["alert_text", "DBT_RUN_RESULTS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT NAME, STATUS, MESSAGE, CREATED_AT, EXECUTION_TIME FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS WHERE NAME = 'apex_participation_matches_participation_fact_enriched_12' AND STATUS = 'error' ORDER BY CREATED_AT DESC LIMIT 1"}
+  ],
+  "token_usage": {"prompt": 1500, "completion": 500}
+}

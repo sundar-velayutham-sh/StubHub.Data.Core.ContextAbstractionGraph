@@ -1,0 +1,15 @@
+{
+  "output": {
+    "thread_summary": "TRIAGE: participation matches test — recurring_transient\nRoot cause: Known experimentation pipeline lag\nResolution: recommend_suppression\nTag: @kavya.jain",
+    "investigation_report": "# Triage Report: apex_participation_matches_participation_fact_enriched_12\n\n## Error Details\n- **Test**: apex_participation_matches_participation_fact_enriched_12\n- **DAG**: monitor__severe_tests__hourly\n- **Error**: Got 436168 results, configured to fail if != 0\n\n## Failure History\n- 7 failures in last 7 days (recurring)\n- Last success: 2026-03-05\n\n## Root Cause\nKnown lag in experimentation pipeline causes participation count mismatch. Experimentation team is aware and monitors independently.\n\n## Resolution\n- Type: recommend_suppression\n- Actions: Exclude from critical AE alerting, experimentation team handles directly\n- Tag: @kavya.jain"
+  },
+  "decision_log": {
+    "decision": "Generated triage report with thread summary and full investigation",
+    "rationale": "Compiled all prior step outputs into a concise thread summary and detailed Markdown investigation report.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["all prior steps"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 3500, "completion": 800}
+}
