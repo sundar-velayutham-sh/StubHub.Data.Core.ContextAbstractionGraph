@@ -40,3 +40,10 @@ workflows:
     triggers:
       keywords: [add ingestion, configure pipeline, new data source, ingest table, add source ingestion]
       input_pattern: "ingest {table} from {source}"
+
+  - id: fix-model-bug
+    name: Fix Bug in dbt Model
+    persona: analytics_engineer
+    triggers:
+      keywords: [fix bug, fix error, model failing, debug model, fix cast, fix join]
+      input_pattern: "fix {model}"

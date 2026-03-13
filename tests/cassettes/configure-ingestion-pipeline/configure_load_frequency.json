@@ -1,0 +1,22 @@
+{
+  "output": {
+    "cron_schedule": "0 * * * *",
+    "sla_tier": "tier_2",
+    "rationale": "Source updates hourly (HOURLY frequency detected). 8.5M rows with MODIFIED_DATE incremental column supports efficient upsert. Similar partner tables in the pipeline run hourly. SLA tier 2 (near-real-time, max 60min latency) is appropriate for financial commission data.",
+    "incremental_strategy": "UPSERT"
+  },
+  "decision_log": {
+    "decision": "Set hourly schedule with UPSERT strategy",
+    "rationale": "Source update_frequency=HOURLY, row_count=8.5M. MODIFIED_DATE enables incremental upsert. Commission data is financial -> Tier 2 SLA minimum. Checked existing partner ingestion configs — all run hourly.",
+    "alternatives_considered": [
+      {"option": "Every 30 minutes", "reason": "Hourly is sufficient — source only updates hourly"},
+      {"option": "APPEND strategy", "reason": "Table has updates (MODIFIED_DATE) — UPSERT needed"}
+    ],
+    "confidence": "high",
+    "informed_by": ["sla_contracts", "load_frequency_heuristics", "existing schedules"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT DATE_TRUNC('hour', MODIFIED_DATE), COUNT(*) FROM ECOMM.DBO.PARTNER_COMMISSION WHERE MODIFIED_DATE >= DATEADD('day', -7, CURRENT_TIMESTAMP()) GROUP BY 1 ORDER BY 1 DESC LIMIT 24"}
+  ],
+  "token_usage": {"prompt": 1200, "completion": 350}
+}

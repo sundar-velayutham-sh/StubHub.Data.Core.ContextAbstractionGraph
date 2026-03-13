@@ -1,0 +1,14 @@
+{
+  "source_table": "ECOMM.DBO.PARTNER_COMMISSION",
+  "staging_table": "DW.STAGING.STG_PARTNER_COMMISSION",
+  "database_class": "sql_server",
+  "column_count": 10,
+  "has_pii": false,
+  "cron_schedule": "0 * * * *",
+  "sla_tier": "tier_2",
+  "incremental_strategy": "UPSERT",
+  "connectivity_ok": true,
+  "create_table_has_transient": true,
+  "create_table_has_loaded_at": true,
+  "create_table_has_source": true
+}

@@ -1,0 +1,20 @@
+{
+  "output": {
+    "config_snippet": "SqlServerTable(\n    source_schema='dbo',\n    source_table='PARTNER_COMMISSION',\n    target_schema='STAGING',\n    target_table='STG_PARTNER_COMMISSION',\n    primary_key='COMMISSION_ID',\n    incremental_column='MODIFIED_DATE',\n    warehouse='LOADING_S',\n),",
+    "config_file_path": "dags/configs/sql_server_tables.py",
+    "database_class": "sql_server"
+  },
+  "decision_log": {
+    "decision": "Generated SqlServerTable() config entry",
+    "rationale": "Read existing sql_server_tables.py to match formatting. Used MODIFIED_DATE as incremental column (supports CDC via timestamp). LOADING_S warehouse per convention.",
+    "alternatives_considered": [
+      {"option": "CREATED_DATE as incremental", "reason": "MODIFIED_DATE is better — captures updates, not just inserts"}
+    ],
+    "confidence": "high",
+    "informed_by": ["existing config file", "database_classes", "ingestion_conventions"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "dags/configs/sql_server_tables.py"}
+  ],
+  "token_usage": {"prompt": 1600, "completion": 400}
+}

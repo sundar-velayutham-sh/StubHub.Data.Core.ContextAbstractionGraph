@@ -1,0 +1,65 @@
+conformance:
+  workflow_id: configure-ingestion-pipeline
+
+  steps:
+    discover_source_schema:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - snowflake_environment
+        - database_classes
+      tools_include:
+        - snowflake_mcp.execute_query
+        - snowflake_mcp.describe_table
+      has_instruction: true
+
+    design_staging_table:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_count: 0
+      knowledge_includes:
+        - sf_type_mapping
+        - naming_conventions
+        - ingestion_conventions
+      has_instruction: true
+
+    generate_ingestion_config:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - ingestion_conventions
+        - database_classes
+      tools_include:
+        - github_cli.read_file
+      dynamic_refs_from:
+        - design_staging_table
+      has_instruction: true
+
+    configure_load_frequency:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - sla_contracts
+        - load_frequency_heuristics
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - discover_source_schema
+      has_instruction: true
+
+    validate_connectivity:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - discover_source_schema
+      has_instruction: true
+
+    show_plan:
+      type: DelegateRequest
+      requires_approval: true
+
+    create_pr:
+      type: DelegateRequest
+      requires_approval: true

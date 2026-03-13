@@ -1,0 +1,30 @@
+{
+  "output": {
+    "staging_table_fqn": "DW.STAGING.STG_PARTNER_COMMISSION",
+    "create_table_sql": "CREATE TRANSIENT TABLE IF NOT EXISTS DW.STAGING.STG_PARTNER_COMMISSION (\n    COMMISSION_ID NUMBER(38,0) NOT NULL,\n    PARTNER_ID NUMBER(10,0) NOT NULL,\n    TRANSACTION_ID NUMBER(38,0) NOT NULL,\n    COMMISSION_AMOUNT NUMBER(18,2) NOT NULL,\n    COMMISSION_RATE NUMBER(5,4) NOT NULL,\n    CURRENCY_CODE VARCHAR(3) NOT NULL,\n    COMMISSION_TYPE VARCHAR(50) NOT NULL,\n    STATUS VARCHAR(20) NOT NULL,\n    CREATED_DATE TIMESTAMP_NTZ NOT NULL,\n    MODIFIED_DATE TIMESTAMP_NTZ,\n    _LOADED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),\n    _SOURCE VARCHAR DEFAULT 'ECOMM'\n);",
+    "column_mapping": [
+      {"source": "CommissionId", "target": "COMMISSION_ID", "source_type": "BIGINT", "target_type": "NUMBER(38,0)"},
+      {"source": "PartnerId", "target": "PARTNER_ID", "source_type": "INT", "target_type": "NUMBER(10,0)"},
+      {"source": "TransactionId", "target": "TRANSACTION_ID", "source_type": "BIGINT", "target_type": "NUMBER(38,0)"},
+      {"source": "CommissionAmount", "target": "COMMISSION_AMOUNT", "source_type": "DECIMAL(18,2)", "target_type": "NUMBER(18,2)"},
+      {"source": "CommissionRate", "target": "COMMISSION_RATE", "source_type": "DECIMAL(5,4)", "target_type": "NUMBER(5,4)"},
+      {"source": "CurrencyCode", "target": "CURRENCY_CODE", "source_type": "VARCHAR(3)", "target_type": "VARCHAR(3)"},
+      {"source": "CommissionType", "target": "COMMISSION_TYPE", "source_type": "VARCHAR(50)", "target_type": "VARCHAR(50)"},
+      {"source": "Status", "target": "STATUS", "source_type": "VARCHAR(20)", "target_type": "VARCHAR(20)"},
+      {"source": "CreatedDate", "target": "CREATED_DATE", "source_type": "DATETIME", "target_type": "TIMESTAMP_NTZ"},
+      {"source": "ModifiedDate", "target": "MODIFIED_DATE", "source_type": "DATETIME", "target_type": "TIMESTAMP_NTZ"}
+    ],
+    "pii_columns": []
+  },
+  "decision_log": {
+    "decision": "Designed staging table STG_PARTNER_COMMISSION with type mappings",
+    "rationale": "Applied sf_type_mapping: BIGINT->NUMBER(38,0), INT->NUMBER(10,0), DATETIME->TIMESTAMP_NTZ. CamelCase->UPPER_SNAKE. Added _LOADED_AT and _SOURCE metadata columns. TRANSIENT for cost savings.",
+    "alternatives_considered": [
+      {"option": "Permanent table", "reason": "TRANSIENT preferred for staging — no failsafe bytes, cheaper"}
+    ],
+    "confidence": "high",
+    "informed_by": ["sf_type_mapping", "naming_conventions", "ingestion_conventions"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1800, "completion": 700}
+}

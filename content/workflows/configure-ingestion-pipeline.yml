@@ -1,0 +1,214 @@
+workflow:
+  id: configure-ingestion-pipeline
+  name: Configure Data Ingestion Pipeline
+  persona: data_engineer
+
+  inputs:
+    table_name:
+      type: string
+      required: true
+    source_database:
+      type: string
+      required: true
+    database_class:
+      type: string
+      required: false
+
+  steps:
+    # Step 0: Discover source table schema and cache it
+    - id: discover_source_schema
+      mode: reason
+      instruction: |
+        Query the source database to discover the table schema. Get:
+        - All column names, data types, and nullability
+        - Primary key columns
+        - Row count and approximate update frequency
+        - Table description or comments if available
+
+        Use INFORMATION_SCHEMA on the source database. If the source is a SQL Server
+        linked via Snowflake, query the linked database's INFORMATION_SCHEMA.
+
+        The discovered schema will be cached for subsequent steps to avoid
+        redundant metadata queries.
+      cache_as: source_schema
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query source database INFORMATION_SCHEMA for table metadata"
+          usage_pattern: |
+            1. SELECT * FROM {source_db}.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{table}'
+            2. SELECT COUNT(*) as row_count FROM {source_db}.{schema}.{table}
+        - name: snowflake_mcp.describe_table
+          instruction: "Get column details for the source table"
+      context:
+        static: [snowflake_environment, database_classes]
+        dynamic: []
+      output_schema:
+        type: object
+        required: [source_table_fqn, columns, primary_key, row_count, update_frequency]
+        properties:
+          columns:
+            type: array
+            items:
+              type: object
+              required: [name, source_type, nullable]
+          update_frequency:
+            type: string
+            enum: [CONTINUOUS, HOURLY, DAILY, WEEKLY, UNKNOWN]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 12000
+
+    # Step 1: Design the staging table DDL
+    - id: design_staging_table
+      mode: reason
+      instruction: |
+        Design the Snowflake staging table DDL based on the source schema.
+        Apply type mapping rules to convert source types to Snowflake types.
+        Follow staging conventions:
+        - Table name: STG_{SOURCE_TABLE_NAME}
+        - Schema: STAGING
+        - Include _LOADED_AT (TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP())
+        - Include _SOURCE (VARCHAR DEFAULT '{source_database}')
+        - Use TRANSIENT table for cost savings
+        - Apply snake_case naming for all columns
+        - Flag any PII columns detected by pattern matching
+
+        Output the complete CREATE TABLE statement and a column mapping table.
+      tools: []
+      context:
+        static: [sf_type_mapping, naming_conventions, ingestion_conventions]
+        cache: [source_schema]
+      output_schema:
+        type: object
+        required: [staging_table_fqn, create_table_sql, column_mapping, pii_columns]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 12000
+
+    # Step 2: Generate the ingestion config (e.g., SqlServerTable())
+    - id: generate_ingestion_config
+      mode: reason
+      instruction: |
+        Generate the ingestion configuration for this table. The format depends
+        on the database_class:
+
+        For sql_server (default):
+        - Generate a SqlServerTable() config entry for the Astronomer DAG
+        - Include: table name, schema, primary key, incremental column, schedule
+        - Read existing config file to match formatting and patterns
+
+        For other classes:
+        - Generate the appropriate config (Snowpipe DDL, Python operator, etc.)
+
+        Output the complete config snippet ready to be inserted into the config file.
+      tools:
+        - name: github_cli.read_file
+          instruction: "Read existing ingestion config file to match patterns"
+      context:
+        static: [ingestion_conventions, database_classes]
+        dynamic:
+          - from: design_staging_table
+            select: [staging_table_fqn, column_mapping]
+        cache: [source_schema]
+      output_schema:
+        type: object
+        required: [config_snippet, config_file_path, database_class]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 10000
+
+    # Step 3: Determine load schedule based on source patterns
+    - id: configure_load_frequency
+      mode: reason
+      instruction: |
+        Determine the optimal load frequency for this table based on:
+        1. Source table update frequency (from discover_source_schema)
+        2. Row count and data volume
+        3. SLA contracts for the data domain
+        4. Existing similar tables' schedules
+
+        Query for recent update patterns if available. Check if the source
+        has a change tracking mechanism (CDC, timestamps, etc.).
+
+        Output the recommended cron schedule, SLA tier, and rationale.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query for update patterns and existing similar schedules"
+      context:
+        static: [sla_contracts, load_frequency_heuristics]
+        dynamic:
+          - from: discover_source_schema
+            select: [row_count, update_frequency]
+      output_schema:
+        type: object
+        required: [cron_schedule, sla_tier, rationale, incremental_strategy]
+        properties:
+          incremental_strategy:
+            type: string
+            enum: [APPEND, UPSERT, SCD_TYPE_2, FULL_REFRESH]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 4: Validate connectivity to source
+    - id: validate_connectivity
+      mode: reason
+      instruction: |
+        Test that the source table is reachable from Snowflake. Run a simple
+        SELECT COUNT(*) or SELECT TOP 1 against the source. Verify:
+        1. The connection works (no permission errors)
+        2. The table has data (row count > 0)
+        3. The columns we expect actually exist
+
+        If the source is behind a linked service, verify the linked service
+        is active. Report any connectivity issues clearly.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Test connectivity with a simple query against the source table"
+      context:
+        static: []
+        dynamic:
+          - from: discover_source_schema
+            select: source_table_fqn
+      output_schema:
+        type: object
+        required: [connectivity_ok, row_count_verified, errors]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 6000
+
+    # Step 5: Show the full ingestion plan for approval
+    - id: show_plan
+      mode: execute
+      type: delegate
+      delegate: shift.show_plan
+      requires_approval: true
+      context:
+        dynamic:
+          - from: discover_source_schema
+            select: [source_table_fqn, columns, row_count]
+          - from: design_staging_table
+            select: [staging_table_fqn, create_table_sql, pii_columns]
+          - from: generate_ingestion_config
+            select: [config_snippet, config_file_path, database_class]
+          - from: configure_load_frequency
+            select: [cron_schedule, sla_tier, incremental_strategy]
+          - from: validate_connectivity
+            select: [connectivity_ok, errors]
+
+    # Step 6: Create PR with all ingestion artifacts
+    - id: create_pr
+      mode: execute
+      type: delegate
+      delegate: shift.create_pr
+      requires_approval: true
+      context:
+        dynamic:
+          - from: design_staging_table
+            select: [staging_table_fqn, create_table_sql]
+          - from: generate_ingestion_config
+            select: [config_snippet, config_file_path]
+          - from: configure_load_frequency
+            select: [cron_schedule, incremental_strategy]
+          - from: validate_connectivity
+            select: connectivity_ok
