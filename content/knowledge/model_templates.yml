@@ -1,0 +1,29 @@
+knowledge:
+  id: model_templates
+  domain: modeling
+  description: "CTE patterns and materialization templates for dbt staging models"
+  guidance:
+    - "Staging models: always start with a source CTE, then rename, then type-cast, then filter"
+    - "Use 'stg_' prefix for staging, 'int_' for intermediate, 'fct_' for facts, 'dim_' for dimensions"
+    - "Materialization: staging = view, intermediate = ephemeral, facts/dims = table or incremental"
+    - "Incremental: use unique_key + merge strategy — never append-only for fact tables"
+    - "Column order: keys first, dimensions second, metrics third, metadata last"
+    - "Always include _loaded_at and _source_id metadata columns in staging models"
+  cte_pattern:
+    staging: |
+      WITH source AS (
+          SELECT * FROM {{ source('schema', 'table') }}
+      ),
+      renamed AS (
+          SELECT
+              column_a AS clean_name_a,
+              column_b AS clean_name_b
+          FROM source
+      ),
+      typed AS (
+          SELECT
+              clean_name_a::VARCHAR AS clean_name_a,
+              clean_name_b::NUMBER AS clean_name_b
+          FROM renamed
+      )
+      SELECT * FROM typed

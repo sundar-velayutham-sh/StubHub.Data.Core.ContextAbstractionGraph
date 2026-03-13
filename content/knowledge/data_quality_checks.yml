@@ -1,0 +1,17 @@
+knowledge:
+  id: data_quality_checks
+  domain: testing
+  description: "Data quality check patterns for validating dbt model outputs"
+  guidance:
+    - "Always check row count before and after transformation — flag >10% variance"
+    - "NULL rate checks: compare source vs target NULL percentages per column"
+    - "Uniqueness: verify primary keys are truly unique after joins"
+    - "Freshness: add source freshness tests — warn at 12h, error at 24h for daily models"
+    - "Referential integrity: foreign keys must exist in parent table"
+    - "Range validation: numeric columns should stay within expected bounds"
+    - "Accepted values: enum columns must only contain known values"
+  check_types:
+    row_count: "SELECT COUNT(*) vs expected range"
+    null_rate: "SELECT COUNT(*) FILTER (WHERE col IS NULL) / COUNT(*)"
+    uniqueness: "SELECT col, COUNT(*) GROUP BY col HAVING COUNT(*) > 1"
+    freshness: "SELECT MAX(updated_at), DATEDIFF(hour, MAX(updated_at), CURRENT_TIMESTAMP())"

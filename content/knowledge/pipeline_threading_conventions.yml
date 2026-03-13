@@ -1,0 +1,17 @@
+knowledge:
+  id: pipeline_threading_conventions
+  domain: modeling
+  description: "Conventions for threading a new field through a multi-model dbt pipeline"
+  guidance:
+    - "Start from the source/staging layer — never add a column mid-pipeline without tracing upstream"
+    - "Thread in order: staging → intermediate → fact/dim — never skip layers"
+    - "Each layer must explicitly SELECT the new column — never rely on SELECT *"
+    - "Add the column to schema.yml at every layer it appears"
+    - "Add appropriate tests at the first layer (staging) and the final layer (fact/dim)"
+    - "If the column requires a JOIN to obtain, add it at the intermediate layer"
+    - "Naming must be consistent across layers — use the final business name from staging onward"
+    - "After threading, run dbt build for the full pipeline to catch downstream breakage"
+  layer_order:
+    - { name: "staging", prefix: "stg_", action: "Add column from source, rename, type-cast" }
+    - { name: "intermediate", prefix: "int_", action: "Add JOINs if needed, apply business logic" }
+    - { name: "fact_or_dim", prefix: "fct_/dim_", action: "Include in final SELECT, add to schema.yml" }

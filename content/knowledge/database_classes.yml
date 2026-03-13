@@ -1,0 +1,28 @@
+knowledge:
+  id: database_classes
+  domain: ingestion
+  description: "Catalog of source database classes and their ingestion characteristics"
+  guidance:
+    - "SQL Server sources: use CDC for high-volume tables (>1M rows), batch for smaller"
+    - "PostgreSQL sources: prefer logical replication for real-time, pg_dump for initial loads"
+    - "MySQL sources: use binlog CDC — avoid full table scans on large tables"
+    - "MongoDB sources: use change streams for real-time, mongodump for initial loads"
+    - "API sources: implement retry with exponential backoff — respect rate limits"
+    - "File sources (S3/GCS): use COPY INTO with pattern matching — never stage manually"
+  database_types:
+    sql_server:
+      connector: "cdc_debezium"
+      staging_format: "VARIANT → typed columns"
+      frequency: "near-real-time or hourly"
+    postgresql:
+      connector: "logical_replication"
+      staging_format: "typed columns direct"
+      frequency: "near-real-time"
+    api_rest:
+      connector: "custom_python"
+      staging_format: "VARIANT → typed columns"
+      frequency: "hourly or daily"
+    file_s3:
+      connector: "snowpipe"
+      staging_format: "stage → COPY INTO"
+      frequency: "event-driven"

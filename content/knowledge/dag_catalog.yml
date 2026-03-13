@@ -1,0 +1,26 @@
+knowledge:
+  id: dag_catalog
+  domain: orchestration
+  description: "Catalog of Airflow DAG patterns and scheduling conventions"
+  guidance:
+    - "DAG naming: {domain}_{frequency}_{action} — e.g., core_daily_transform"
+    - "Use Cosmos DbtDagParser for all dbt-based DAGs — never manual task wiring"
+    - "Schedule daily DAGs at staggered times to avoid warehouse contention"
+    - "Set max_active_runs=1 for all transformation DAGs — prevent overlap"
+    - "Use ExternalTaskSensor for cross-DAG dependencies — never time-based waits"
+    - "Retries: 2 for transforms, 3 for ingestion, 0 for alerting"
+    - "SLA callbacks: attach to final task in each DAG — not intermediate tasks"
+    - "Tag all DAGs with domain and tier for filtering in Airflow UI"
+  dag_patterns:
+    daily_transform:
+      schedule: "0 6 * * *"
+      retries: 2
+      warehouse: "TRANSFORM_M"
+    hourly_ingestion:
+      schedule: "0 * * * *"
+      retries: 3
+      warehouse: "INGEST_S"
+    weekly_snapshot:
+      schedule: "0 8 * * 0"
+      retries: 1
+      warehouse: "TRANSFORM_M"

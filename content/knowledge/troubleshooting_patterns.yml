@@ -1,0 +1,23 @@
+knowledge:
+  id: troubleshooting_patterns
+  domain: debugging
+  description: "Common dbt model error patterns and their canonical fixes"
+  guidance:
+    - "CAST errors: check source column types vs target — use TRY_CAST for nullable conversions"
+    - "JOIN errors: verify join keys match cardinality — look for fanout (1:N becoming N:M)"
+    - "NULL propagation: trace NULLs upstream — fix at the source, not with COALESCE hacks"
+    - "Ambiguous column: always qualify with table alias in multi-table queries"
+    - "Type mismatch in UNION: align column types explicitly — Snowflake implicit casts are unreliable"
+    - "Division by zero: wrap with NULLIF(denominator, 0) — never use CASE WHEN"
+    - "Timestamp timezone issues: always use CONVERT_TIMEZONE before date comparisons"
+    - "Duplicate rows after JOIN: check if join produces fanout — add QUALIFY ROW_NUMBER if needed"
+  error_categories:
+    cast_error:
+      signals: ["invalid type", "cannot cast", "numeric value is not recognized"]
+      fix_pattern: "Identify source column type → TRY_CAST to target → add NOT NULL test"
+    join_error:
+      signals: ["ambiguous column", "duplicate rows", "fanout"]
+      fix_pattern: "Check join cardinality → add DISTINCT or QUALIFY → verify row counts"
+    logic_error:
+      signals: ["unexpected NULL", "wrong aggregation", "missing rows"]
+      fix_pattern: "Trace data lineage → compare expected vs actual at each CTE → fix source"

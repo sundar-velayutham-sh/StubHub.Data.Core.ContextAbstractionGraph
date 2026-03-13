@@ -1,0 +1,25 @@
+knowledge:
+  id: test_inference_rules
+  domain: testing
+  description: "Rules for inferring dbt tests from column names and types"
+  guidance:
+    - "Primary keys (_id, _key suffix): add unique + not_null tests"
+    - "Foreign keys (_fk suffix or 'parent_' prefix): add relationships test"
+    - "Enum columns (status, type, category): add accepted_values test"
+    - "Date columns: add not_null + recency test where applicable"
+    - "Boolean columns (is_, has_ prefix): add accepted_values [true, false]"
+    - "Amount/currency columns: add not_null + expression test for non-negative"
+    - "Email columns: add not_null + format test"
+  inference_rules:
+    - pattern: ".*_id$|.*_key$"
+      tests: ["unique", "not_null"]
+    - pattern: ".*_fk$|^parent_.*"
+      tests: ["relationships", "not_null"]
+    - pattern: "^(status|type|category)$|.*_(status|type|category)$"
+      tests: ["accepted_values", "not_null"]
+    - pattern: ".*_(date|at|timestamp)$"
+      tests: ["not_null"]
+    - pattern: "^(is_|has_).*"
+      tests: ["accepted_values"]
+    - pattern: ".*_(amount|price|cost|revenue|total)$"
+      tests: ["not_null"]

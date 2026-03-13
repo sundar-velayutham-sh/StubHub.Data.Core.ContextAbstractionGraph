@@ -1,0 +1,25 @@
+knowledge:
+  id: sla_contracts
+  domain: operations
+  description: "SLA contracts for data freshness and pipeline completion times"
+  guidance:
+    - "Tier 1 (revenue-critical): data must land within 1 hour of source — alert at 30min delay"
+    - "Tier 2 (operational): data must land within 4 hours — alert at 2h delay"
+    - "Tier 3 (analytical): data must land within 24 hours — alert at 12h delay"
+    - "All SLAs measured from source system commit time to Snowflake availability"
+    - "CDC pipelines: target 15-minute lag for Tier 1 tables"
+    - "Batch pipelines: schedule with 2x buffer over median runtime"
+    - "Always set dbt source freshness tests matching the SLA tier"
+  tiers:
+    tier_1:
+      max_delay_hours: 1
+      alert_threshold_hours: 0.5
+      examples: ["transactions", "payments", "inventory"]
+    tier_2:
+      max_delay_hours: 4
+      alert_threshold_hours: 2
+      examples: ["user_activity", "campaign_metrics"]
+    tier_3:
+      max_delay_hours: 24
+      alert_threshold_hours: 12
+      examples: ["historical_snapshots", "audit_logs"]
