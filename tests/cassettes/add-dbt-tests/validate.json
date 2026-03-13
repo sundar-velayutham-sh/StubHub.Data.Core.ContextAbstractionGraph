@@ -1,0 +1,20 @@
+{
+  "output": {
+    "parse_ok": true,
+    "tests_passed": 11,
+    "tests_failed": 0,
+    "errors": []
+  },
+  "decision_log": {
+    "decision": "All 11 tests pass (3 existing + 8 new)",
+    "rationale": "dbt parse completed without errors. dbt test --select dim_venue ran all 11 tests: 3 pre-existing (venue_id not_null, venue_id unique, venue_name not_null) + 8 new. All passed.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.parse", "dbt_mcp.test"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.parse", "input": "dbt parse"},
+    {"tool": "dbt_mcp.test", "input": "dbt test --select dim_venue"}
+  ],
+  "token_usage": {"prompt": 900, "completion": 250}
+}

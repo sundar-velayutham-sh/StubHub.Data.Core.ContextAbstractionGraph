@@ -1,0 +1,25 @@
+{
+  "output": {
+    "model_path": "models/marts/core/dim_venue.sql",
+    "schema_yml_path": "models/marts/core/schema.yml",
+    "source_table_fqn": "DW.CORE.VENUE_DIM",
+    "existing_tests": [
+      {"column": "venue_id", "tests": ["not_null", "unique"]},
+      {"column": "venue_name", "tests": ["not_null"]}
+    ],
+    "columns_without_tests": ["city", "state", "country", "capacity", "venue_type", "created_at", "updated_at", "is_active"]
+  },
+  "decision_log": {
+    "decision": "Found dim_venue model with partial test coverage",
+    "rationale": "Model has 10 columns but only 2 (venue_id, venue_name) have tests defined. 8 columns have no tests. schema.yml exists at models/marts/core/schema.yml.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.get_node_details_dev", "github_cli.read_file"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.get_node_details_dev", "input": "dim_venue"},
+    {"tool": "github_cli.read_file", "input": "models/marts/core/schema.yml"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT * FROM DW.INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'VENUE_DIM'"}
+  ],
+  "token_usage": {"prompt": 1200, "completion": 400}
+}

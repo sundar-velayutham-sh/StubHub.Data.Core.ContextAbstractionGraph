@@ -1,0 +1,11 @@
+{
+  "model_name": "dim_venue",
+  "existing_tests_count": 3,
+  "new_tests_count": 8,
+  "total_tests_count": 11,
+  "columns_with_accepted_values": ["country", "venue_type", "is_active"],
+  "columns_with_not_null_added": ["city", "country", "venue_type", "created_at", "is_active"],
+  "nullable_columns_skipped": ["state", "capacity", "updated_at"],
+  "parse_ok": true,
+  "all_tests_passed": true
+}

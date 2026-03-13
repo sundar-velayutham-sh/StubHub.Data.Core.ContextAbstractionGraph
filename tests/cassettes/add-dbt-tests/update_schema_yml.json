@@ -1,0 +1,18 @@
+{
+  "output": {
+    "modified_yml": "version: 2\n\nmodels:\n  - name: dim_venue\n    description: >\n      Venue dimension table containing details about event venues\n      including location, capacity, and type classification.\n    columns:\n      - name: venue_id\n        description: Unique identifier for each venue.\n        tests:\n          - not_null\n          - unique\n      - name: venue_name\n        description: Display name of the venue.\n        tests:\n          - not_null\n      - name: city\n        description: City where the venue is located.\n        tests:\n          - not_null\n      - name: state\n        description: State or province where the venue is located. May be null for international venues.\n      - name: country\n        description: ISO country code for the venue location.\n        tests:\n          - not_null\n          - accepted_values:\n              values: ['US', 'GB', 'CA', 'DE', 'FR', 'AU', 'JP', 'MX', 'BR', 'ES', 'IT', 'NL']\n      - name: capacity\n        description: Maximum seating capacity of the venue. May be null if unknown.\n      - name: venue_type\n        description: Classification of the venue (e.g., Arena, Stadium, Theater).\n        tests:\n          - not_null\n          - accepted_values:\n              values: ['Arena', 'Stadium', 'Theater', 'Club', 'Amphitheater', 'Convention Center', 'Festival Grounds', 'Other']\n      - name: created_at\n        description: Timestamp when the venue record was created.\n        tests:\n          - not_null\n      - name: updated_at\n        description: Timestamp when the venue record was last updated. Null if never updated.\n      - name: is_active\n        description: Whether the venue is currently active and hosting events.\n        tests:\n          - not_null\n          - accepted_values:\n              values: [true, false]\n",
+    "tests_added_count": 8,
+    "columns_modified": ["city", "country", "venue_type", "created_at", "is_active"]
+  },
+  "decision_log": {
+    "decision": "Updated schema.yml with 8 new tests, preserved all existing content",
+    "rationale": "Added not_null to 5 columns, accepted_values to 3 columns. Existing tests on venue_id (not_null, unique) and venue_name (not_null) preserved. Column order maintained. Added description entries for columns that had none.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["existing schema.yml", "inferred tests"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/marts/core/schema.yml"}
+  ],
+  "token_usage": {"prompt": 2200, "completion": 800}
+}

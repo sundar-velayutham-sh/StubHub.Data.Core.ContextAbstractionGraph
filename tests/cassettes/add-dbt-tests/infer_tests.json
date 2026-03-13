@@ -1,0 +1,28 @@
+{
+  "output": {
+    "new_tests": [
+      {"column": "city", "test_type": "not_null", "rationale": "Non-nullable column (0% nulls) without not_null test"},
+      {"column": "country", "test_type": "not_null", "rationale": "Non-nullable column (0% nulls) without not_null test"},
+      {"column": "country", "test_type": "accepted_values", "rationale": "Low cardinality (12 distinct values) — good candidate for accepted_values", "config": {"values": ["US", "GB", "CA", "DE", "FR", "AU", "JP", "MX", "BR", "ES", "IT", "NL"]}},
+      {"column": "venue_type", "test_type": "not_null", "rationale": "Non-nullable column (0% nulls) without not_null test"},
+      {"column": "venue_type", "test_type": "accepted_values", "rationale": "Low cardinality (8 distinct values) — categorical column", "config": {"values": ["Arena", "Stadium", "Theater", "Club", "Amphitheater", "Convention Center", "Festival Grounds", "Other"]}},
+      {"column": "created_at", "test_type": "not_null", "rationale": "Non-nullable timestamp column without not_null test"},
+      {"column": "is_active", "test_type": "not_null", "rationale": "Non-nullable boolean column without not_null test"},
+      {"column": "is_active", "test_type": "accepted_values", "rationale": "Boolean column — should only be true/false", "config": {"values": [true, false]}}
+    ],
+    "total_tests_to_add": 8,
+    "columns_affected": ["city", "country", "venue_type", "created_at", "is_active"]
+  },
+  "decision_log": {
+    "decision": "Inferred 8 new tests across 5 columns",
+    "rationale": "Applied rules: not_null for all non-nullable columns without it (city, country, venue_type, created_at, is_active). accepted_values for low-cardinality columns (country=12, venue_type=8, is_active=2). Skipped: state (nullable, 8.5% nulls), capacity (nullable, 15.2% nulls), updated_at (nullable, 22% nulls). Existing tests on venue_id and venue_name preserved.",
+    "alternatives_considered": [
+      {"option": "Add not_null to state", "reason": "8.5% null rate — intentionally nullable"},
+      {"option": "Add accepted_values to city", "reason": "3200 distinct values — too high cardinality"}
+    ],
+    "confidence": "high",
+    "informed_by": ["column_metadata", "existing_tests", "naming_conventions"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1800, "completion": 600}
+}

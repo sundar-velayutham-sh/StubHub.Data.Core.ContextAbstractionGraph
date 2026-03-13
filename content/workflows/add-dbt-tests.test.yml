@@ -1,0 +1,55 @@
+conformance:
+  workflow_id: add-dbt-tests
+
+  steps:
+    resolve_model:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - dbt_project_structure
+      tools_include:
+        - dbt_mcp.get_node_details_dev
+        - github_cli.read_file
+        - snowflake_mcp.execute_query
+      has_instruction: true
+
+    get_column_metadata:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - snowflake_mcp.describe_table
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - resolve_model
+      has_instruction: true
+
+    infer_tests:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_count: 0
+      knowledge_includes:
+        - naming_conventions
+      dynamic_refs_from:
+        - get_column_metadata
+        - resolve_model
+      has_instruction: true
+
+    update_schema_yml:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - github_cli.read_file
+      dynamic_refs_from:
+        - infer_tests
+        - resolve_model
+      has_instruction: true
+
+    validate:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - dbt_mcp.test
+        - dbt_mcp.parse
+      dynamic_refs_from:
+        - update_schema_yml
+      has_instruction: true

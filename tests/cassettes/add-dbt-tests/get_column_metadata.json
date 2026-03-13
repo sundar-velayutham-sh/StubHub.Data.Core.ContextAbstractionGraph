@@ -1,0 +1,28 @@
+{
+  "output": {
+    "column_metadata": [
+      {"name": "VENUE_ID", "sf_type": "NUMBER(38,0)", "nullable": false, "null_pct": 0.0, "cardinality": 15000, "row_count": 15000},
+      {"name": "VENUE_NAME", "sf_type": "VARCHAR(512)", "nullable": false, "null_pct": 0.0, "cardinality": 14850, "row_count": 15000},
+      {"name": "CITY", "sf_type": "VARCHAR(256)", "nullable": false, "null_pct": 0.0, "cardinality": 3200, "row_count": 15000},
+      {"name": "STATE", "sf_type": "VARCHAR(128)", "nullable": true, "null_pct": 8.5, "cardinality": 52, "row_count": 15000},
+      {"name": "COUNTRY", "sf_type": "VARCHAR(64)", "nullable": false, "null_pct": 0.0, "cardinality": 12, "row_count": 15000},
+      {"name": "CAPACITY", "sf_type": "NUMBER(10,0)", "nullable": true, "null_pct": 15.2, "cardinality": 450, "row_count": 15000},
+      {"name": "VENUE_TYPE", "sf_type": "VARCHAR(64)", "nullable": false, "null_pct": 0.0, "cardinality": 8, "row_count": 15000},
+      {"name": "CREATED_AT", "sf_type": "TIMESTAMP_NTZ", "nullable": false, "null_pct": 0.0, "cardinality": 14200, "row_count": 15000},
+      {"name": "UPDATED_AT", "sf_type": "TIMESTAMP_NTZ", "nullable": true, "null_pct": 22.0, "cardinality": 8500, "row_count": 15000},
+      {"name": "IS_ACTIVE", "sf_type": "BOOLEAN", "nullable": false, "null_pct": 0.0, "cardinality": 2, "row_count": 15000}
+    ]
+  },
+  "decision_log": {
+    "decision": "Collected metadata for all 10 columns",
+    "rationale": "Queried INFORMATION_SCHEMA.COLUMNS for types and cardinality stats. Notable: COUNTRY has 12 distinct values (good accepted_values candidate), VENUE_TYPE has 8 (also good), IS_ACTIVE is boolean with 2 values.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["INFORMATION_SCHEMA.COLUMNS", "cardinality queries"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.describe_table", "input": "DW.CORE.VENUE_DIM"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT 'CITY' as col, COUNT(*) as total, COUNT(CITY) as non_null, COUNT(DISTINCT CITY) as distinct_vals FROM DW.CORE.VENUE_DIM UNION ALL SELECT 'STATE', COUNT(*), COUNT(STATE), COUNT(DISTINCT STATE) FROM DW.CORE.VENUE_DIM"}
+  ],
+  "token_usage": {"prompt": 1400, "completion": 500}
+}

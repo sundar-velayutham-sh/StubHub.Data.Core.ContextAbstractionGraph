@@ -1,0 +1,183 @@
+workflow:
+  id: add-dbt-tests
+  name: Add dbt Tests to Existing Model
+  persona: analytics_engineer
+
+  inputs:
+    model_name:
+      type: string
+      required: true
+
+  steps:
+    # Step 0: Resolve Model — find model and read existing schema.yml
+    - id: resolve_model
+      mode: reason
+      instruction: |
+        Find the dbt model and its existing schema.yml file.
+        Use dbt_mcp.get_node_details_dev to locate the model, then read the
+        existing schema.yml via GitHub CLI. Extract the list of columns that
+        already have tests defined, and identify columns with no tests.
+        Also resolve the source table FQN for Snowflake metadata queries.
+      tools:
+        - name: dbt_mcp.get_node_details_dev
+          instruction: "Look up model metadata in dbt project"
+        - name: github_cli.read_file
+          instruction: "Read the existing schema.yml for this model"
+        - name: snowflake_mcp.execute_query
+          instruction: "Verify source table exists in INFORMATION_SCHEMA"
+      context:
+        static: [dbt_project_structure]
+        dynamic: []
+      output_schema:
+        type: object
+        required: [model_path, schema_yml_path, source_table_fqn, existing_tests, columns_without_tests]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 1: Get Column Metadata — types, cardinality, null rates
+    - id: get_column_metadata
+      mode: reason
+      instruction: |
+        Get detailed column metadata from Snowflake for test inference.
+        For each column, collect:
+        - Data type
+        - Nullability
+        - Null rate (% of rows that are NULL)
+        - Cardinality (COUNT DISTINCT)
+        - Min/max values for numeric and date columns
+        This metadata drives automatic test inference in the next step.
+      tools:
+        - name: snowflake_mcp.describe_table
+          instruction: "Get column types and nullability from INFORMATION_SCHEMA"
+        - name: snowflake_mcp.execute_query
+          instruction: "Query cardinality, null rates, and value ranges per column"
+          usage_pattern: |
+            1. SELECT column_name, COUNT(*), COUNT(column_name), COUNT(DISTINCT column_name) GROUP BY 1
+            2. For date/numeric columns: SELECT MIN(col), MAX(col)
+      context:
+        static: []
+        dynamic:
+          - from: resolve_model
+            select: [source_table_fqn, existing_tests]
+      output_schema:
+        type: object
+        required: [column_metadata]
+        properties:
+          column_metadata:
+            type: array
+            items:
+              type: object
+              required: [name, sf_type, nullable, null_pct, cardinality, row_count]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 2: Infer Tests — determine which tests to add
+    - id: infer_tests
+      mode: reason
+      instruction: |
+        Determine which dbt tests to add based on column patterns and metadata.
+        Apply these rules:
+        - Primary key columns (unique + non-null + high cardinality): not_null + unique
+        - Foreign key columns (name ends with _id, not PK): not_null + relationships
+        - Non-nullable columns without not_null test: add not_null
+        - Low-cardinality columns (< 20 distinct values): accepted_values
+        - Date columns: not_null (if non-nullable) + recency test if applicable
+        - Boolean columns: accepted_values with [true, false]
+        Skip columns that already have the inferred test type.
+        Output the list of new tests to add, grouped by column.
+      tools: []
+      context:
+        static: [naming_conventions]
+        dynamic:
+          - from: get_column_metadata
+            select: column_metadata
+          - from: resolve_model
+            select: existing_tests
+      heuristics:
+        - "If column is named *_id and cardinality equals row count, it is likely a PK"
+        - "If column is named *_id and cardinality is much less than row count, it is a FK"
+        - "Low cardinality + VARCHAR = good accepted_values candidate"
+        - "Always add not_null to non-nullable columns that lack it"
+      anti_patterns:
+        - "Don't add accepted_values to high-cardinality columns"
+        - "Don't add unique test to FK columns"
+        - "Don't duplicate tests that already exist"
+      output_schema:
+        type: object
+        required: [new_tests, total_tests_to_add, columns_affected]
+        properties:
+          new_tests:
+            type: array
+            items:
+              type: object
+              required: [column, test_type, rationale]
+      quality_criteria:
+        - "Every non-nullable column has not_null test"
+        - "PK column has unique test"
+        - "No duplicate tests"
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 3: Update Schema YML — generate updated YAML with new tests
+    - id: update_schema_yml
+      mode: reason
+      instruction: |
+        Read the existing schema.yml and produce the updated version with
+        new tests added. Preserve all existing content (descriptions, existing
+        tests). Add the inferred tests to the appropriate column entries.
+        If a column entry doesn't exist yet, create it with the test.
+        Output the complete modified schema.yml content.
+      tools:
+        - name: github_cli.read_file
+          instruction: "Read the current schema.yml to preserve existing content"
+      context:
+        static: []
+        dynamic:
+          - from: infer_tests
+            select: new_tests
+          - from: resolve_model
+            select: schema_yml_path
+      anti_patterns:
+        - "Don't remove existing tests or descriptions"
+        - "Don't reorder existing columns — add new entries at the end"
+        - "Don't change indentation style of existing content"
+      output_schema:
+        type: object
+        required: [modified_yml, tests_added_count, columns_modified]
+      quality_criteria:
+        - "Existing tests preserved"
+        - "New tests properly indented"
+        - "YAML is valid"
+      budget:
+        max_llm_turns: 3
+        max_tokens: 15000
+
+    # Step 4: Validate — run dbt test to verify
+    - id: validate
+      mode: reason
+      instruction: |
+        Validate the updated schema.yml by running dbt parse and dbt test.
+        Check that:
+        1. The YAML parses without errors
+        2. All new tests pass against the actual data
+        If any tests fail, report which ones and why (e.g., accepted_values
+        has unexpected values, unique test finds duplicates).
+      tools:
+        - name: dbt_mcp.test
+          instruction: "Run dbt test --select {model_name} to validate all tests"
+        - name: dbt_mcp.parse
+          instruction: "Parse the dbt project with updated schema.yml"
+      context:
+        static: []
+        dynamic:
+          - from: update_schema_yml
+            select: modified_yml
+      output_schema:
+        type: object
+        required: [parse_ok, tests_passed, tests_failed, errors]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
