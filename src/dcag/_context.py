@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from dcag._decisions import DecisionStore
 from dcag._loaders import KnowledgeLoader, PersonaLoader
 from dcag._registry import ToolRegistry
 from dcag._tokens import estimate_tokens
@@ -62,6 +63,28 @@ class ContextAssembler:
                 result[ref] = prior_outputs[ref]
         return result
 
+    def build_decisions(
+        self,
+        decision_refs: list[dict],
+        decision_store: DecisionStore | None,
+        workflow_inputs: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Load decision traces matching entity references."""
+        if not decision_refs or not decision_store:
+            return {}
+
+        result: dict[str, Any] = {}
+        for ref in decision_refs:
+            entity = ref.get("entity", "")
+            # Resolve template variables: {{inputs.table_name}} -> actual value
+            if "{{" in entity:
+                for key, val in workflow_inputs.items():
+                    entity = entity.replace(f"{{{{inputs.{key}}}}}", str(val))
+            decisions = decision_store.search_by_entity(entity)
+            if decisions:
+                result[f"decisions:{entity}"] = decisions
+        return result
+
     def build_cache(self, cache_refs: list[str], schema_cache: dict[str, Any]) -> dict[str, Any]:
         """Load cached metadata entries by key."""
         result: dict[str, Any] = {}
@@ -78,6 +101,7 @@ class ContextAssembler:
         workflow_inputs: dict[str, Any],
         schema_cache: dict[str, Any] | None = None,
         loop_var: tuple[str, Any] | None = None,
+        decision_store: DecisionStore | None = None,
     ) -> ReasonRequest:
         """Assemble a full ReasonRequest for a reason step."""
         # Merge knowledge refs into domain knowledge
@@ -110,6 +134,11 @@ class ContextAssembler:
         if loop_var is not None:
             var_name, var_value = loop_var
             dynamic[var_name] = var_value
+
+        # Load decision traces
+        decisions = self.build_decisions(step.context_decisions, decision_store, workflow_inputs)
+        if decisions:
+            dynamic.update(decisions)
 
         # Filter tools through registry if available
         available_tools = self._registry.resolve_available(step.tools) if self._registry else step.tools

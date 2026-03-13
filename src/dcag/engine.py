@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from dcag._context import ContextAssembler
+from dcag._decisions import DecisionStore
 from dcag._loaders import KnowledgeLoader, PersonaLoader, WorkflowLoader
 from dcag._registry import ToolRegistry
 from dcag._trace import TraceWriter
@@ -40,7 +41,8 @@ class DCAGEngine:
         self._knowledge_loader = KnowledgeLoader(self._content_dir / "knowledge")
         self._workflow_loader = WorkflowLoader(self._content_dir / "workflows")
 
-    def start(self, workflow_id: str, inputs: dict[str, Any]) -> WorkflowRun:
+    def start(self, workflow_id: str, inputs: dict[str, Any],
+              decisions_dir: str | Path | None = None) -> WorkflowRun:
         """Start a new workflow run."""
         workflow = self._workflow_loader.load(workflow_id)
         persona = self._persona_loader.load(workflow.persona)
@@ -57,6 +59,7 @@ class DCAGEngine:
             assembler=assembler,
             config_hash=config_hash,
             registry=registry,
+            decisions_dir=Path(decisions_dir) if decisions_dir else None,
         )
 
     def list_workflows(self) -> list[ManifestEntry]:
@@ -83,6 +86,7 @@ class WorkflowRun:
         assembler: ContextAssembler,
         config_hash: str,
         registry: ToolRegistry | None = None,
+        decisions_dir: Path | None = None,
     ):
         self._run_id = run_id
         self._workflow = workflow
@@ -92,6 +96,7 @@ class WorkflowRun:
         self._walker = Walker(workflow.steps)
         self._prior_outputs: dict[str, Any] = {}
         self._schema_cache: dict[str, Any] = {}
+        self._decision_store = DecisionStore(decisions_dir) if decisions_dir else None
         self._status = "running"
         self._trace = TraceWriter(run_id, Path(tempfile.gettempdir()) / "dcag-runs")
         self._trace.record_start(workflow.id, inputs, config_hash)
@@ -141,6 +146,7 @@ class WorkflowRun:
                 workflow_inputs=self._inputs,
                 schema_cache=self._schema_cache,
                 loop_var=loop_var,
+                decision_store=self._decision_store,
             )
 
         elif step.mode == "execute" and step.execute_type == "script":
@@ -220,6 +226,8 @@ class WorkflowRun:
             if self._walker.is_complete():
                 self._status = "completed"
                 self._trace.record_end("completed")
+                if self._decision_store:
+                    self._persist_decisions()
 
         elif isinstance(outcome, StepFailure):
             self._trace.record_step(
@@ -234,6 +242,36 @@ class WorkflowRun:
                 duration_ms=duration_ms, output=None,
             )
             self._walker.advance()
+
+    def _persist_decisions(self) -> None:
+        """Extract decision facts from the last step output and persist."""
+        if not self._decision_store:
+            return
+
+        # Look for decision_facts in the last completed step output
+        last_output = None
+        for step in reversed(self._workflow.steps):
+            if step.id in self._prior_outputs:
+                last_output = self._prior_outputs[step.id]
+                break
+
+        if not isinstance(last_output, dict):
+            return
+
+        # If last output has explicit decision fields, persist them
+        entity = last_output.get("entity") or self._inputs.get("table_name", "")
+        facts = last_output.get("decision_facts", last_output.get("facts", {}))
+        confidence = last_output.get("confidence", "medium")
+
+        if entity:
+            self._decision_store.write(
+                run_id=self._run_id,
+                workflow_id=self._workflow.id,
+                entity=str(entity),
+                facts=facts if isinstance(facts, dict) else {"result": facts},
+                confidence=str(confidence),
+                valid_until=last_output.get("valid_until"),
+            )
 
     def get_trace(self) -> dict:
         """Get the consolidated execution trace."""
