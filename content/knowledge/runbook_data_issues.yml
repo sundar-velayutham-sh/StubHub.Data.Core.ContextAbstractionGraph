@@ -12,3 +12,6 @@ knowledge:
     - "For upstream_data: check MAX(loaded_at) or MAX(created_at) on upstream tables for recent data changes"
     - "For upstream_data: check DBT_RUN_RESULTS for upstream model failures in the same timeframe"
     - "Always quantify the impact: how many rows affected, what percentage of total"
+    - "CRITICAL — SCD Type 2 with identity resolution (delete+insert): retry does NOT self-heal bad rows. Once the anon_id is resolved, the model's self-scan no longer finds it, so the bad row from the previous run persists. You MUST manually DELETE the bad rows before rerunning."
+    - "CRITICAL — SCD Type 2 test failures: do NOT suggest changing test severity to warn if downstream tables consume the SCD data. The incorrect row will propagate and make cleanup harder. Tests should fail hard to catch it early."
+    - "For SCD2 identity resolution failures: (1) identify the bad rows via the test SQL, (2) manually DELETE them, (3) rerun the model, (4) verify tests pass"
