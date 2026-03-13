@@ -47,3 +47,10 @@ workflows:
     triggers:
       keywords: [fix bug, fix error, model failing, debug model, fix cast, fix join]
       input_pattern: "fix {model}"
+
+  - id: create-staging-model
+    name: Create Staging Model for Source Table
+    persona: analytics_engineer
+    triggers:
+      keywords: [create staging model, new source, add source table, scaffold model, new staging]
+      input_pattern: "create staging for {table}"

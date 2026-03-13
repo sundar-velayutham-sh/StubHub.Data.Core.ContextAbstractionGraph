@@ -1,0 +1,20 @@
+{
+  "output": {
+    "model_exists": false,
+    "existing_model_path": null,
+    "sources_yml_exists": true,
+    "source_entry_exists": false
+  },
+  "decision_log": {
+    "decision": "No existing staging model found for PAYMENT_TRANSACTION",
+    "rationale": "dbt_mcp found no model named stg_payment_transaction. GitHub search found no source() references to PAYMENT_TRANSACTION. The payment sources.yml exists but has no entry for this table.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.get_node_details_dev", "github_cli.search_code"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.get_node_details_dev", "input": "stg_payment_transaction"},
+    {"tool": "github_cli.search_code", "input": "source('payment', 'PAYMENT_TRANSACTION')"}
+  ],
+  "token_usage": {"prompt": 900, "completion": 250}
+}

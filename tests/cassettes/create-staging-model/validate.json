@@ -1,0 +1,19 @@
+{
+  "output": {
+    "compile_ok": true,
+    "parse_ok": true,
+    "errors": []
+  },
+  "decision_log": {
+    "decision": "Validation passed — model compiles, project parses",
+    "rationale": "dbt compile succeeded for stg_payment_transaction. dbt parse completed without errors. Source reference resolves correctly. No name collisions detected.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["dbt_mcp.compile", "dbt_mcp.parse"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.compile", "input": "dbt compile --select stg_payment_transaction"},
+    {"tool": "dbt_mcp.parse", "input": "dbt parse"}
+  ],
+  "token_usage": {"prompt": 800, "completion": 200}
+}

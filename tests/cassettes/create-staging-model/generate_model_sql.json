@@ -1,0 +1,17 @@
+{
+  "output": {
+    "model_sql": "{{ config(\n    materialized='incremental',\n    unique_key='payment_id',\n    incremental_strategy='merge',\n    tags=['payment']\n) }}\n\nWITH source AS (\n    SELECT * FROM {{ source('payment', 'PAYMENT_TRANSACTION') }}\n    {% if is_incremental() %}\n    WHERE UPDATED_AT > (SELECT MAX(updated_at) FROM {{ this }})\n    {% endif %}\n),\n\nrenamed AS (\n    SELECT\n        PAYMENT_ID AS payment_id,\n        ORDER_ID AS order_id,\n        TRIM(PAYMENT_METHOD) AS payment_method,\n        AMOUNT AS amount,\n        TRIM(CURRENCY) AS currency,\n        TRIM(STATUS) AS status,\n        TRIM(PROCESSOR_RESPONSE_CODE) AS processor_response_code,\n        TRIM(PROCESSOR_RESPONSE_TEXT) AS processor_response_text,\n        CREATED_AT AS created_at,\n        UPDATED_AT AS updated_at\n    FROM source\n)\n\nSELECT * FROM renamed",
+    "model_filename": "stg_payment_transaction.sql",
+    "column_count": 10,
+    "config_block": "materialized='incremental', unique_key='payment_id', incremental_strategy='merge'"
+  },
+  "decision_log": {
+    "decision": "Generated incremental staging model with 10 columns",
+    "rationale": "All columns renamed to snake_case. VARCHAR columns wrapped in TRIM(). Incremental filter on UPDATED_AT. Config block includes materialization, unique_key, and strategy.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["source_metadata (cached)", "naming_conventions", "model_templates"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 2000, "completion": 700}
+}

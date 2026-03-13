@@ -1,0 +1,24 @@
+{
+  "output": {
+    "schema_yml_content": "version: 2\n\nmodels:\n  - name: stg_payment_transaction\n    description: >\n      Staging model for payment transactions from the payment system.\n      Each row represents a single payment attempt with status,\n      amount, and processor response details.\n    columns:\n      - name: payment_id\n        description: Unique identifier for each payment transaction.\n        tests:\n          - not_null\n          - unique\n      - name: order_id\n        description: Foreign key to the order associated with this payment.\n        tests:\n          - not_null\n      - name: payment_method\n        description: Payment method used (e.g., credit_card, paypal, apple_pay).\n        tests:\n          - not_null\n      - name: amount\n        description: Payment amount in the transaction currency.\n        tests:\n          - not_null\n      - name: currency\n        description: ISO 4217 currency code for the payment amount.\n        tests:\n          - not_null\n          - accepted_values:\n              values: ['USD', 'GBP', 'EUR', 'CAD', 'AUD']\n      - name: status\n        description: Current status of the payment (e.g., pending, completed, failed, refunded).\n        tests:\n          - not_null\n          - accepted_values:\n              values: ['pending', 'completed', 'failed', 'refunded', 'cancelled']\n      - name: processor_response_code\n        description: Response code returned by the payment processor. May be null for pending payments.\n      - name: processor_response_text\n        description: Human-readable response message from the payment processor.\n      - name: created_at\n        description: Timestamp when the payment record was created.\n        tests:\n          - not_null\n      - name: updated_at\n        description: Timestamp when the payment record was last updated. May be null if never updated.\n",
+    "tests_added": [
+      {"column": "payment_id", "tests": ["not_null", "unique"]},
+      {"column": "order_id", "tests": ["not_null"]},
+      {"column": "payment_method", "tests": ["not_null"]},
+      {"column": "amount", "tests": ["not_null"]},
+      {"column": "currency", "tests": ["not_null", "accepted_values"]},
+      {"column": "status", "tests": ["not_null", "accepted_values"]},
+      {"column": "created_at", "tests": ["not_null"]}
+    ],
+    "column_count": 10
+  },
+  "decision_log": {
+    "decision": "Generated schema.yml with 10 columns, 11 tests",
+    "rationale": "Applied testing standards: not_null on non-nullable columns, unique on PK (payment_id), accepted_values on enum columns (currency, status). Nullable columns (processor_response_code, processor_response_text, updated_at) have no not_null test.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["source_metadata (cached)", "testing_standards"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1800, "completion": 800}
+}

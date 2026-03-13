@@ -1,0 +1,84 @@
+conformance:
+  workflow_id: create-staging-model
+
+  steps:
+    discover_source_table:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - snowflake_environment
+        - sf_type_mapping
+      tools_include:
+        - snowflake_mcp.execute_query
+        - snowflake_mcp.describe_table
+      has_instruction: true
+
+    check_existing_models:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - dbt_mcp.get_node_details_dev
+        - github_cli.search_code
+      dynamic_refs_from:
+        - discover_source_table
+      has_instruction: true
+
+    choose_materialization:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_count: 0
+      knowledge_includes:
+        - dbt_project_structure
+        - model_templates
+      dynamic_refs_from:
+        - discover_source_table
+      has_instruction: true
+
+    generate_model_sql:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_count: 0
+      knowledge_includes:
+        - naming_conventions
+        - model_templates
+      dynamic_refs_from:
+        - discover_source_table
+        - choose_materialization
+      has_instruction: true
+
+    generate_schema_yml:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_count: 0
+      knowledge_includes:
+        - testing_standards
+        - naming_conventions
+      dynamic_refs_from:
+        - generate_model_sql
+      has_instruction: true
+
+    add_to_sources_yml:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - dbt_project_structure
+      tools_include:
+        - github_cli.read_file
+      dynamic_refs_from:
+        - discover_source_table
+      has_instruction: true
+
+    validate:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - dbt_mcp.compile
+        - dbt_mcp.parse
+      dynamic_refs_from:
+        - generate_model_sql
+        - generate_schema_yml
+      has_instruction: true
+
+    create_pr:
+      type: DelegateRequest
+      requires_approval: true

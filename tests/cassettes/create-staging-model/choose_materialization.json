@@ -1,0 +1,20 @@
+{
+  "output": {
+    "materialization": "incremental",
+    "unique_key": "payment_id",
+    "incremental_strategy": "merge",
+    "rationale": "Table has 25M rows (>10M threshold) with UPDATED_AT column available for incremental loading. Merge strategy using PAYMENT_ID as unique key ensures upsert behavior for updated records."
+  },
+  "decision_log": {
+    "decision": "Incremental materialization with merge strategy",
+    "rationale": "25M rows exceeds the 10M threshold for incremental. UPDATED_AT column is available for incremental filtering. PAYMENT_ID is a natural unique key for merge.",
+    "alternatives_considered": [
+      {"option": "table", "reason": "Would work but 25M row full refresh is expensive"},
+      {"option": "view", "reason": "Too many rows for view — would be slow"}
+    ],
+    "confidence": "high",
+    "informed_by": ["source_metadata (cached)", "row_count", "column types"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1100, "completion": 300}
+}

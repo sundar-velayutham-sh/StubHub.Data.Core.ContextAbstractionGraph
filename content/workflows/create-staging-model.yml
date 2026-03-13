@@ -1,0 +1,299 @@
+workflow:
+  id: create-staging-model
+  name: Create Staging Model for Source Table
+  persona: analytics_engineer
+
+  inputs:
+    table_name:
+      type: string
+      required: true
+    source_system:
+      type: string
+      required: false
+    database:
+      type: string
+      required: false
+    schema:
+      type: string
+      required: false
+
+  steps:
+    # Step 0: Discover source table metadata and cache it
+    - id: discover_source_table
+      mode: reason
+      cache_as: source_metadata
+      instruction: |
+        Find the specified table in Snowflake and collect full metadata:
+        1. Fully-qualified name (DATABASE.SCHEMA.TABLE)
+        2. All columns with types, nullability, and comments
+        3. Row count and size in bytes
+        4. Creation date and last altered date
+        5. Table type (BASE TABLE, VIEW, EXTERNAL TABLE)
+
+        If database/schema not specified, search across known databases.
+        If source_system is provided, narrow the search to that system's schema.
+
+        This metadata will be cached as "source_metadata" for use in later steps.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query INFORMATION_SCHEMA.TABLES and COLUMNS for full metadata"
+          usage_pattern: |
+            1. SELECT * FROM {db}.INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME ILIKE '{name}'
+            2. SELECT * FROM {db}.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{name}' ORDER BY ORDINAL_POSITION
+            3. SELECT COUNT(*) as row_count FROM {table_fqn}
+        - name: snowflake_mcp.describe_table
+          instruction: "Get column details including comments"
+      context:
+        static: [snowflake_environment, sf_type_mapping]
+        dynamic: []
+      output_schema:
+        type: object
+        required: [table_fqn, columns, row_count, size_bytes, table_type, created_at]
+        properties:
+          columns:
+            type: array
+            items:
+              type: object
+              required: [name, type, nullable, ordinal_position]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+
+    # Step 1: Check if a staging model already exists
+    - id: check_existing_models
+      mode: reason
+      instruction: |
+        Check if a staging model already exists for this source table.
+        Search for:
+        1. A dbt model named stg_{table_name} (lowercase, snake_case)
+        2. Any model that references this source table via source()
+        3. An existing sources.yml entry for this table
+
+        If a model exists, report its path and status. The workflow should
+        still proceed (to update or regenerate) but the user should be informed.
+      tools:
+        - name: dbt_mcp.get_node_details_dev
+          instruction: "Search for existing stg_ model by name"
+        - name: github_cli.search_code
+          instruction: "Search for source() references to this table"
+      context:
+        static: []
+        dynamic:
+          - from: discover_source_table
+            select: table_fqn
+      output_schema:
+        type: object
+        required: [model_exists, existing_model_path, sources_yml_exists, source_entry_exists]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 2: Choose materialization strategy
+    - id: choose_materialization
+      mode: reason
+      instruction: |
+        Determine the optimal materialization for this staging model based on:
+
+        1. Row count:
+           - < 100K rows -> view (cheap, always fresh)
+           - 100K - 10M rows -> table (predictable performance)
+           - > 10M rows -> incremental (avoid full refreshes)
+
+        2. Table characteristics from cached source_metadata:
+           - Has CREATED_AT or UPDATED_AT -> incremental candidate
+           - Has no timestamp columns -> table (can't do incremental)
+           - Is an append-only log -> incremental with insert_overwrite
+
+        3. Update frequency:
+           - Static reference data -> view
+           - Daily batch loads -> table
+           - Streaming / frequent updates -> incremental
+
+        Output the recommended materialization with rationale.
+      tools: []
+      context:
+        static: [dbt_project_structure, model_templates]
+        dynamic:
+          - from: discover_source_table
+            select: [row_count, size_bytes]
+        cache: [source_metadata]
+      output_schema:
+        type: object
+        required: [materialization, unique_key, incremental_strategy, rationale]
+        properties:
+          materialization:
+            type: string
+            enum: [view, table, incremental]
+      budget:
+        max_llm_turns: 2
+        max_tokens: 5000
+
+    # Step 3: Generate the staging model SQL
+    - id: generate_model_sql
+      mode: reason
+      instruction: |
+        Generate the complete staging model SQL file following team conventions:
+
+        1. CTE structure:
+           - `source` CTE: SELECT * FROM {{ source('{source_system}', '{TABLE_NAME}') }}
+           - `renamed` CTE: Rename columns to snake_case, apply type casts
+           - `final` CTE (if needed): Add computed columns, filters
+
+        2. Column handling from cached source_metadata:
+           - Rename camelCase/UPPER_CASE to snake_case
+           - Apply appropriate casts (e.g., VARCHAR dates -> DATE)
+           - Add TRIM() for VARCHAR columns
+           - Preserve column order from source
+
+        3. If incremental:
+           - Add {% if is_incremental() %} block
+           - Filter on the incremental key column (UPDATED_AT or CREATED_AT)
+
+        4. Config block:
+           - {{ config(materialized='{materialization}') }}
+           - Add unique_key if incremental
+           - Add tags if source_system is known
+
+        Output the complete SQL file content.
+      tools: []
+      context:
+        static: [naming_conventions, model_templates]
+        dynamic:
+          - from: discover_source_table
+          - from: choose_materialization
+        cache: [source_metadata]
+      anti_patterns:
+        - "Don't use SELECT * in the final output — list all columns explicitly"
+        - "Don't skip type casting — always cast to the target type"
+        - "Don't hardcode database names — use source() macro"
+      quality_criteria:
+        - "All columns are explicitly listed (no SELECT *)"
+        - "Column names are snake_case"
+        - "Type casts are applied where appropriate"
+        - "Config block matches materialization choice"
+      output_schema:
+        type: object
+        required: [model_sql, model_filename, column_count, config_block]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 15000
+
+    # Step 4: Generate schema.yml for the staging model
+    - id: generate_schema_yml
+      mode: reason
+      instruction: |
+        Generate the schema.yml file for this staging model.
+
+        From cached source_metadata, generate:
+        1. Model-level description
+        2. Column entries with:
+           - name (snake_case, matching the model SQL)
+           - description (business-friendly, inferred from column name and type)
+           - tests:
+             - not_null on non-nullable columns
+             - unique on likely primary keys (columns ending in _id that are non-nullable)
+             - accepted_values for known enum columns (status, type, category)
+        3. Follow existing project conventions for YAML formatting
+
+        Output the complete schema.yml content.
+      tools: []
+      context:
+        static: [testing_standards, naming_conventions]
+        dynamic:
+          - from: generate_model_sql
+        cache: [source_metadata]
+      anti_patterns:
+        - "Don't skip descriptions — every column must have one"
+        - "Don't forget tests for primary key columns"
+      quality_criteria:
+        - "Every column has a non-empty description"
+        - "PK columns have not_null + unique"
+        - "YAML is valid and properly indented"
+      output_schema:
+        type: object
+        required: [schema_yml_content, tests_added, column_count]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 15000
+
+    # Step 5: Add or update sources.yml entry
+    - id: add_to_sources_yml
+      mode: reason
+      instruction: |
+        Add (or update) the source entry in sources.yml for this table.
+
+        1. Read the existing sources.yml for this source system
+        2. If the source group exists, add the table entry
+        3. If no source group exists, create the full source definition:
+           - name: {source_system}
+           - database: {database}
+           - schema: {schema}
+           - tables: [{table_name}]
+        4. Include freshness checks if the table has timestamp columns
+        5. Add the loaded_at_field if CREATED_AT or UPDATED_AT exists
+
+        Output the complete sources.yml content (or the section to add).
+      tools:
+        - name: github_cli.read_file
+          instruction: "Read existing sources.yml to check for the source group"
+      context:
+        static: [dbt_project_structure]
+        dynamic:
+          - from: discover_source_table
+            select: table_fqn
+      output_schema:
+        type: object
+        required: [sources_yml_content, is_new_source, source_name]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 10000
+
+    # Step 6: Validate — dbt compile + parse
+    - id: validate
+      mode: reason
+      instruction: |
+        Validate all generated files:
+        1. dbt_mcp.compile — check the staging model SQL compiles
+        2. dbt_mcp.parse — check the full project parses with the new schema.yml and sources.yml
+        3. Verify source reference resolves correctly
+        4. Check for any name collisions with existing models
+
+        If validation fails, report specific errors for correction.
+      tools:
+        - name: dbt_mcp.compile
+          instruction: "Compile the new staging model"
+        - name: dbt_mcp.parse
+          instruction: "Parse the full dbt project with new files"
+      context:
+        static: []
+        dynamic:
+          - from: generate_model_sql
+            select: [model_sql, model_filename]
+          - from: generate_schema_yml
+            select: schema_yml_content
+      output_schema:
+        type: object
+        required: [compile_ok, parse_ok, errors]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 7: Create PR
+    - id: create_pr
+      mode: execute
+      delegate: shift.create_pr
+      requires_approval: true
+      context:
+        dynamic:
+          - from: discover_source_table
+            select: [table_fqn, row_count]
+          - from: choose_materialization
+            select: [materialization, rationale]
+          - from: generate_model_sql
+            select: [model_filename, column_count]
+          - from: generate_schema_yml
+            select: [tests_added, column_count]
+          - from: add_to_sources_yml
+            select: [is_new_source, source_name]
+          - from: validate
+            select: [compile_ok, parse_ok]

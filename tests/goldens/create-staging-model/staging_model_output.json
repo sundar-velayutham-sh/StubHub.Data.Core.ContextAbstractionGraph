@@ -1,0 +1,12 @@
+{
+  "table_fqn": "DW.RAW.PAYMENT_TRANSACTION",
+  "model_filename": "stg_payment_transaction.sql",
+  "materialization": "incremental",
+  "unique_key": "payment_id",
+  "column_count": 10,
+  "tests_added_count": 11,
+  "has_incremental_filter": true,
+  "has_source_ref": true,
+  "compile_ok": true,
+  "parse_ok": true
+}

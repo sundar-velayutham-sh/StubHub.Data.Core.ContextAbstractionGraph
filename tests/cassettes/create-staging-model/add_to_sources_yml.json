@@ -1,0 +1,20 @@
+{
+  "output": {
+    "sources_yml_content": "version: 2\n\nsources:\n  - name: payment\n    database: DW\n    schema: RAW\n    description: Payment system source tables\n    loader: fivetran\n    loaded_at_field: UPDATED_AT\n    freshness:\n      warn_after: {count: 24, period: hour}\n      error_after: {count: 48, period: hour}\n    tables:\n      - name: PAYMENT_TRANSACTION\n        description: Raw payment transaction records from the payment processing system.\n        columns:\n          - name: PAYMENT_ID\n            tests:\n              - not_null\n              - unique\n",
+    "is_new_source": false,
+    "source_name": "payment"
+  },
+  "decision_log": {
+    "decision": "Added PAYMENT_TRANSACTION to existing payment source group",
+    "rationale": "The payment source group already exists in sources.yml. Added PAYMENT_TRANSACTION as a new table entry with freshness check on UPDATED_AT (warn after 24h, error after 48h).",
+    "alternatives_considered": [
+      {"option": "Create new source group", "reason": "Unnecessary — payment group already exists"}
+    ],
+    "confidence": "high",
+    "informed_by": ["github_cli.read_file"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/staging/payment/_payment_sources.yml"}
+  ],
+  "token_usage": {"prompt": 1000, "completion": 400}
+}
