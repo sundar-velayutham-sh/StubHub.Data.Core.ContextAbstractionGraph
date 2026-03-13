@@ -116,13 +116,31 @@ class WorkflowRun:
         step = self._walker.current()
         self._step_start_time = time.monotonic()
 
+        # Initialize loop items on first encounter of a loop step
+        if step.loop and not self._walker.is_in_loop():
+            over_path = step.loop.get("over", "")
+            parts = over_path.split(".")
+            if len(parts) >= 2:
+                source_step = parts[0]
+                field_path = ".".join(parts[1:])
+                source = self._prior_outputs.get(source_step, {})
+                # Traverse field path
+                for part in field_path.split("."):
+                    source = source.get(part, []) if isinstance(source, dict) else []
+                if isinstance(source, list):
+                    self._walker.set_loop_items(source)
+
         if step.mode == "reason":
+            loop_var = None
+            if self._walker.is_in_loop() and self._walker.loop_variable_name():
+                loop_var = (self._walker.loop_variable_name(), self._walker.current_loop_item())
             return self._assembler.assemble_reason(
                 step=step,
                 persona=self._persona,
                 prior_outputs=self._prior_outputs,
                 workflow_inputs=self._inputs,
                 schema_cache=self._schema_cache,
+                loop_var=loop_var,
             )
 
         elif step.mode == "execute" and step.execute_type == "script":

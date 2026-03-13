@@ -77,6 +77,7 @@ class ContextAssembler:
         prior_outputs: dict[str, Any],
         workflow_inputs: dict[str, Any],
         schema_cache: dict[str, Any] | None = None,
+        loop_var: tuple[str, Any] | None = None,
     ) -> ReasonRequest:
         """Assemble a full ReasonRequest for a reason step."""
         # Merge knowledge refs into domain knowledge
@@ -104,6 +105,11 @@ class ContextAssembler:
         cached = self.build_cache(step.context_cache, schema_cache or {})
         if cached:
             dynamic.update(cached)
+
+        # Inject loop variable if walker provides one
+        if loop_var is not None:
+            var_name, var_value = loop_var
+            dynamic[var_name] = var_value
 
         # Filter tools through registry if available
         available_tools = self._registry.resolve_available(step.tools) if self._registry else step.tools

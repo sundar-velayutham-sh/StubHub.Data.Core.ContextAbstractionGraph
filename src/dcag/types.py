@@ -208,6 +208,7 @@ class StepDef:
     fallback_on_failure: str | None = None
     cache_as: str | None = None
     context_cache: list[str] = field(default_factory=list)
+    loop: dict | None = None
 
 
 @dataclass(frozen=True)
