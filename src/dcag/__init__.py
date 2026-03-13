@@ -7,6 +7,8 @@ Public API:
 
 Types: dcag.types
 """
+from dcag._decisions import DecisionStore
+from dcag._evaluator import evaluate
 from dcag.engine import DCAGEngine, WorkflowRun
 from dcag.drivers.shift import ShiftDriver
 from dcag.types import (
@@ -33,6 +35,8 @@ from dcag.types import (
 
 __all__ = [
     "DCAGEngine",
+    "DecisionStore",
+    "evaluate",
     "WorkflowRun",
     "ShiftDriver",
     "Budget",
