@@ -189,7 +189,7 @@ class WorkflowRun:
                 if capability_keys & outcome.output.keys():
                     self._registry.update_capabilities(outcome.output)
 
-            self._walker.advance()
+            self._walker.advance(step_output={"output": outcome.output})
 
             # Check if that was the last step
             if self._walker.is_complete():
