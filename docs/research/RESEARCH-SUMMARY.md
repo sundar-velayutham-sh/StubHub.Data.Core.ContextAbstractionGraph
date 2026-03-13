@@ -105,11 +105,29 @@ parse_alert → get_airflow_context → get_dbt_context → classify_alert_type
 
 ## New MCP Servers Needed
 
-| Server | Priority | What It Does |
-|--------|----------|-------------|
-| **airflow_mcp** | P0 | DAG runs, task status, task logs, rerun tasks |
-| **elementary_mcp** | P1 | Source freshness, schema changes, anomaly detection |
-| **hex_mcp** | P2 | Hex run status, rerun notebooks |
+| Server | Priority | What It Does | Status |
+|--------|----------|-------------|--------|
+| **airflow_mcp** | P0 | DAG runs, task status, task logs, rerun tasks | **EXISTS: `astro-airflow-mcp`** by Astronomer. Install: `uvx astro-airflow-mcp --transport stdio`. Works with Astronomer Cloud, Airflow 2.x/3.x. Tools: `list_dags`, `list_dag_runs`, `get_task_instance`, `get_task_logs`, `diagnose_dag_run`, `list_import_errors`. |
+| **elementary_mcp** | P1 | Source freshness, schema changes, anomaly detection | Not found — may need to build |
+| **hex_mcp** | P2 | Hex run status, rerun notebooks | Not found — may need to build |
+
+### Airflow MCP Setup (for Shift)
+
+```bash
+# Add to Shift's MCP config:
+claude mcp add airflow -- uvx astro-airflow-mcp --transport stdio
+
+# Environment:
+AIRFLOW_API_URL=https://clqbkgtqw026r01qpmoae9wnw.astronomer.run/dw9qxrd8
+AIRFLOW_USERNAME=...
+AIRFLOW_PASSWORD=...
+```
+
+Key tools for on-call:
+- `diagnose_dag_run` — analyze failed runs (exactly what AE on-call needs)
+- `get_task_logs` — read failure logs without opening Airflow UI
+- `list_dag_runs` — check recent run history
+- `get_task_instance` — check specific task state
 
 ## New Knowledge Files Needed
 
