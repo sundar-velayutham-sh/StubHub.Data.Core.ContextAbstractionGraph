@@ -54,3 +54,10 @@ workflows:
     triggers:
       keywords: [create staging model, new source, add source table, scaffold model, new staging]
       input_pattern: "create staging for {table}"
+
+  - id: triage-ae-alert
+    name: Triage AE On-Call Alert
+    persona: analytics_engineer
+    triggers:
+      keywords: [triage alert, on-call, alert triage, investigate failure, debug alert, ae alert, triage]
+      input_pattern: "triage {alert_text}"

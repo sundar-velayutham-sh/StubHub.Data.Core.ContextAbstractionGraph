@@ -1,0 +1,18 @@
+knowledge:
+  id: alert_classification
+  name: AE Alert Classification Taxonomy
+  description: Maps error message patterns to alert types for on-call triage
+
+  guidance:
+    - "invalid identifier → classification: invalid_identifier (code error)"
+    - "Insufficient privileges or access control → classification: permission_error (code error)"
+    - "SQL compilation error (other patterns) → classification: compilation_error (code error)"
+    - "Duplicate row or DML action → classification: duplicate_row (data issue)"
+    - "Got N results, configured to fail → classification: test_failure (data issue)"
+    - "Error traces to upstream table or backfill → classification: upstream_data (data issue)"
+    - "exceeded or timeout or execution_time > 3600s → classification: timeout (infrastructure)"
+    - "internal error or Processing aborted → classification: internal_error (infrastructure)"
+    - "Multiple DAGs failing simultaneously → classification: warehouse_contention (infrastructure)"
+    - "Same error 3+ times in 7 days, self-resolves → classification: recurring_transient (known issue)"
+    - "Test fails intermittently, passes on rerun → classification: flaky_test (known issue)"
+    - "Pipeline has zero queries in QUERY_HISTORY last 30 days → classification: deprecated_pipeline (known issue)"

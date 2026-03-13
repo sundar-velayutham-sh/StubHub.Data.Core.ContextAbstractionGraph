@@ -1,0 +1,15 @@
+knowledge:
+  id: on_call_conventions
+  name: AE On-Call Conventions
+  description: Response SLAs, escalation paths, and team ownership mapping
+
+  guidance:
+    - "On-call rotation is weekly, tracked in #ae-alerts channel topic"
+    - "In-hours priority: respond within 30 minutes during business hours"
+    - "Urgent priority: respond within 15 minutes, may auto-create incident"
+    - "Cascade rule: if 5+ models fail in same timeframe, investigate root model only"
+    - "Transient rule: if error contains 'internal error' or '300005', check if next run succeeded"
+    - "Suppression: always get domain owner agreement before suppressing an alert"
+    - "Escalation to DE: infrastructure issues, ingestion pipeline failures, warehouse contention"
+    - "Escalation to domain owner: domain-specific data issues, model logic questions"
+    - "After-hours: defer non-urgent to next business day, disable flaky tests to stop noise"

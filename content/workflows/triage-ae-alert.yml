@@ -1,0 +1,477 @@
+workflow:
+  id: triage-ae-alert
+  name: Triage AE On-Call Alert
+  persona: analytics_engineer
+
+  inputs:
+    alert_text:
+      type: string
+      required: true
+    channel_id:
+      type: string
+      required: false
+    thread_ts:
+      type: string
+      required: false
+
+  steps:
+    # Step 0: Parse alert text and fetch error details from Snowflake
+    - id: parse_alert
+      mode: reason
+      instruction: |
+        Parse the raw alert text from incident.io to extract structured fields:
+        1. DAG name, task name, model name from the alert format
+        2. Priority level (critical, warning, info)
+        3. Alert URL if present
+
+        Then query DBT_RUN_RESULTS for the actual error message and metadata
+        for this model. Extract the error message, error code, execution time,
+        and status.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query DBT_RUN_RESULTS for the most recent error for this model"
+          usage_pattern: |
+            1. SELECT NAME, STATUS, MESSAGE, CREATED_AT, EXECUTION_TIME
+               FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS
+               WHERE NAME = '{model_name}' AND STATUS = 'error'
+               ORDER BY CREATED_AT DESC LIMIT 1
+      context:
+        static: [alert_classification, on_call_conventions]
+        dynamic: []
+      output_schema:
+        type: object
+        required: [model_name, dag_name, task_name, error_message, priority]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 1: Check failure history — recurring, intermittent, or new?
+    - id: check_failure_history
+      mode: reason
+      instruction: |
+        Determine if this failure is new, recurring, or intermittent by querying
+        the last 7 days of run results for this model. Extract:
+        1. Total failure count in last 7 days
+        2. Date of first failure and last success
+        3. Pattern: "new" (first time), "recurring" (3+ failures), or
+           "intermittent" (fails then succeeds then fails)
+        4. Whether the most recent run after the failure succeeded (self-resolved)
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query 7-day history of run results for this model"
+          usage_pattern: |
+            1. SELECT STATUS, CREATED_AT, EXECUTION_TIME, MESSAGE
+               FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS
+               WHERE NAME = '{model_name}'
+                 AND CREATED_AT >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+               ORDER BY CREATED_AT DESC
+      context:
+        static: []
+        dynamic:
+          - from: parse_alert
+            select: model_name
+      output_schema:
+        type: object
+        required: [is_recurring, failure_count_7d, first_failure, last_success, pattern]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 2: Check for cascade failures in the same timeframe
+    - id: check_cascade
+      mode: reason
+      instruction: |
+        Determine if other models are failing in the same DAG run or timeframe.
+        This identifies cascade failures where a root model failure causes
+        downstream models to fail.
+        1. Query failures in a +/- 1 hour window around the alert
+        2. Count distinct failing models
+        3. Identify the root model (earliest failure or most upstream)
+        4. List all affected models
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Find other failures in the same time window"
+          usage_pattern: |
+            1. SELECT NAME, STATUS, MESSAGE, CREATED_AT
+               FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS
+               WHERE STATUS = 'error'
+                 AND CREATED_AT BETWEEN DATEADD(hour, -1, '{alert_time}')
+                     AND DATEADD(hour, 1, '{alert_time}')
+               ORDER BY CREATED_AT ASC
+      context:
+        static: []
+        dynamic:
+          - from: parse_alert
+            select: [dag_name, model_name, error_message]
+      output_schema:
+        type: object
+        required: [is_cascade, cascade_count, root_model, affected_models]
+      budget:
+        max_llm_turns: 3
+        max_tokens: 8000
+
+    # Step 3: Get model context — SQL, owner, lineage, recent commits
+    - id: get_model_context
+      mode: reason
+      instruction: |
+        Gather full context about the failing model:
+        1. Read the model SQL file from GitHub
+        2. Get dbt node details (materialization, tags, dependencies)
+        3. Get upstream and downstream lineage
+        4. Check for recent commits (last 48h) that may have caused the failure
+        5. Get owner and cost_center from model META
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query DBT_MODELS for owner, tags, and metadata"
+          usage_pattern: |
+            1. SELECT NAME, MATERIALIZATION, SCHEMA_NAME, TAGS,
+                 JSON_EXTRACT_PATH_TEXT(META, 'owner') as owner,
+                 JSON_EXTRACT_PATH_TEXT(META, 'cost_center') as cost_center
+               FROM DW.DATAOPS_DBT.DBT_MODELS WHERE NAME = '{model_name}'
+        - name: github_cli.read_file
+          instruction: "Read the model SQL file from the Astronomer repo"
+        - name: github_cli.search_code
+          instruction: "Search for recent commits touching this model"
+      context:
+        static: [troubleshooting_patterns]
+        dynamic:
+          - from: parse_alert
+            select: model_name
+      output_schema:
+        type: object
+        required: [model_sql, owner, tags, materialization, upstream_models, downstream_models, recent_commits, model_path]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 12000
+
+    # Step 4: Classify alert type — BRANCHING STEP
+    - id: classify_alert
+      mode: reason
+      instruction: |
+        Based on ALL prior context (error message, failure history, cascade
+        analysis, model context), classify this alert into exactly one category:
+
+        Code errors:
+        - invalid_identifier: "invalid identifier" in error message
+        - permission_error: "Insufficient privileges" or "access control" in error
+        - compilation_error: Other "SQL compilation error" patterns
+
+        Data issues:
+        - duplicate_row: "Duplicate row" or "DML action" in error
+        - test_failure: Test name in model, "Got N results, configured to fail"
+        - upstream_data: Error traces to upstream table, backfill suspected
+
+        Infrastructure:
+        - timeout: "exceeded", "timeout", or execution_time > 3600s
+        - internal_error: "internal error", "Processing aborted", error code 300005
+        - warehouse_contention: Multiple DAGs failing, queue depth high
+
+        Known issues:
+        - recurring_transient: Same error 3+ times in 7 days, self-resolves
+        - flaky_test: Test fails intermittently, passes on rerun
+        - deprecated_pipeline: Zero queries in QUERY_HISTORY last 30 days
+
+        Output the classification with confidence and rationale.
+      tools: []
+      context:
+        static: [alert_classification, troubleshooting_patterns]
+        dynamic:
+          - from: parse_alert
+          - from: check_failure_history
+          - from: check_cascade
+          - from: get_model_context
+      output_schema:
+        type: object
+        required: [classification, confidence, rationale]
+        properties:
+          classification:
+            type: string
+            enum:
+              - invalid_identifier
+              - permission_error
+              - compilation_error
+              - duplicate_row
+              - test_failure
+              - upstream_data
+              - timeout
+              - internal_error
+              - warehouse_contention
+              - recurring_transient
+              - flaky_test
+              - deprecated_pipeline
+      budget:
+        max_llm_turns: 2
+        max_tokens: 5000
+      transitions:
+        - when: "output.classification in ['invalid_identifier', 'permission_error', 'compilation_error']"
+          goto: diagnose_code_error
+        - when: "output.classification in ['duplicate_row', 'test_failure', 'upstream_data']"
+          goto: diagnose_data_issue
+        - when: "output.classification in ['timeout', 'internal_error', 'warehouse_contention']"
+          goto: diagnose_infrastructure
+        - default: diagnose_known_issue
+
+    # Step 5a: Diagnose code errors
+    - id: diagnose_code_error
+      mode: reason
+      instruction: |
+        Diagnose the code-level error using targeted queries:
+
+        For invalid_identifier:
+        - Query INFORMATION_SCHEMA.COLUMNS to check if column exists with
+          different casing or was recently renamed
+        - Check recent GitHub commits (last 48h) for column renames
+
+        For permission_error:
+        - Run SHOW GRANTS ON SCHEMA to identify missing grants
+        - Check if a new schema was created without GRANT statements
+
+        For compilation_error:
+        - Read the full model SQL and identify the failing line
+        - Check if upstream model changed its output columns
+        - Check if the error is in a macro reference
+
+        Output: root cause, affected line, proposed fix, and all diagnostic
+        queries that were run with their results.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Run diagnostic queries for code errors"
+          usage_pattern: |
+            1. SELECT COLUMN_NAME FROM {database}.INFORMATION_SCHEMA.COLUMNS
+               WHERE TABLE_NAME = '{source_table}' AND COLUMN_NAME ILIKE '%{identifier}%'
+            2. SHOW GRANTS ON SCHEMA {schema_name}
+        - name: snowflake_mcp.describe_table
+          instruction: "Describe tables involved in the error"
+        - name: github_cli.read_file
+          instruction: "Read model SQL or macro files"
+      context:
+        static: [runbook_code_errors, troubleshooting_patterns]
+        dynamic:
+          - from: parse_alert
+          - from: get_model_context
+            select: [model_sql, model_path, recent_commits]
+      output_schema:
+        type: object
+        required: [root_cause, proposed_fix, diagnostic_queries_run]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 12000
+      transitions:
+        - default: determine_resolution
+
+    # Step 5b: Diagnose data issues
+    - id: diagnose_data_issue
+      mode: reason
+      instruction: |
+        Diagnose the data quality issue using targeted queries:
+
+        For duplicate_row:
+        - Query for duplicates on the unique key
+        - Trace the join that creates the fanout
+        - Check upstream tables for recent backfills
+
+        For test_failure:
+        - Read the compiled test SQL from the error path
+        - Run the test SQL manually to see failing rows
+        - Determine if the test expectation is wrong or the data is wrong
+
+        For upstream_data:
+        - Check MAX(loaded_at) or MAX(created_at) on upstream tables
+        - Check DBT_RUN_RESULTS for upstream model failures
+        - Identify which upstream source changed
+
+        Always quantify impact: how many rows affected, what percentage of total.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Run diagnostic queries for data issues"
+          usage_pattern: |
+            1. SELECT {unique_key}, COUNT(*) as cnt
+               FROM {table} GROUP BY 1 HAVING COUNT(*) > 1 LIMIT 10
+            2. SELECT MAX(CREATED_AT), COUNT(*) FROM {upstream_table}
+               WHERE CREATED_AT >= DATEADD(day, -1, CURRENT_TIMESTAMP())
+      context:
+        static: [runbook_data_issues, troubleshooting_patterns]
+        dynamic:
+          - from: parse_alert
+          - from: get_model_context
+            select: [model_sql, upstream_models]
+      output_schema:
+        type: object
+        required: [root_cause, diagnostic_queries_run, affected_row_count]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 12000
+      transitions:
+        - default: determine_resolution
+
+    # Step 5c: Diagnose infrastructure issues
+    - id: diagnose_infrastructure
+      mode: reason
+      instruction: |
+        Diagnose the infrastructure issue using targeted queries:
+
+        For timeout:
+        - Check QUERY_HISTORY for the model's recent execution times
+        - Determine if this run is abnormally long vs historical
+        - Check warehouse queue depth for concurrent query backup
+
+        For internal_error:
+        - Check if Snowflake error code is 300005/300010 (transient)
+        - Check if the next scheduled run succeeded
+        - If recurring on same model, recommend Snowflake support ticket
+
+        For warehouse_contention:
+        - Check QUERY_HISTORY for long-running non-dbt queries
+        - Identify blocking jobs (Metaflow, ML, ad-hoc)
+        - Check warehouse utilization and max_clusters setting
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Run diagnostic queries for infrastructure issues"
+          usage_pattern: |
+            1. SELECT QUERY_TYPE, TOTAL_ELAPSED_TIME/1000 as seconds,
+                 WAREHOUSE_NAME, QUERY_TEXT
+               FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+               WHERE START_TIME >= DATEADD(hour, -2, CURRENT_TIMESTAMP())
+                 AND WAREHOUSE_NAME = '{warehouse}'
+               ORDER BY TOTAL_ELAPSED_TIME DESC LIMIT 10
+      context:
+        static: [runbook_infrastructure, troubleshooting_patterns]
+        dynamic:
+          - from: parse_alert
+          - from: check_cascade
+      output_schema:
+        type: object
+        required: [root_cause, is_transient, diagnostic_queries_run]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 12000
+      transitions:
+        - default: determine_resolution
+
+    # Step 5d: Diagnose known issues
+    - id: diagnose_known_issue
+      mode: reason
+      instruction: |
+        Diagnose the known or recurring issue:
+
+        For recurring_transient:
+        - Check if the next run after the failure succeeded (self-resolved)
+        - Count occurrences in last 7 days
+        - Determine if this is noise that should be suppressed
+
+        For flaky_test:
+        - Check test pass/fail pattern over last 7 days
+        - Determine if the test is non-deterministic
+        - Recommend disabling or fixing the test
+
+        For deprecated_pipeline:
+        - Query QUERY_HISTORY for usage in last 30 days
+        - Exclude orchestration users from the count
+        - Check if any downstream dashboards or models depend on it
+        - Recommend decommission if zero usage confirmed
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Run diagnostic queries for known issues"
+          usage_pattern: |
+            1. SELECT STATUS, CREATED_AT FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS
+               WHERE NAME = '{model_name}' ORDER BY CREATED_AT DESC LIMIT 5
+            2. SELECT COUNT(*) as query_count
+               FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+               WHERE QUERY_TEXT ILIKE '%{table_name}%'
+                 AND START_TIME >= DATEADD(day, -30, CURRENT_TIMESTAMP())
+                 AND USER_NAME NOT IN ('ORCHESTRATION_PROD')
+      context:
+        static: [on_call_conventions]
+        dynamic:
+          - from: parse_alert
+          - from: check_failure_history
+          - from: get_model_context
+      output_schema:
+        type: object
+        required: [root_cause, is_self_resolved, should_suppress, recommendation]
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+      transitions:
+        - default: determine_resolution
+
+    # Step 6: Determine resolution path
+    - id: determine_resolution
+      mode: reason
+      instruction: |
+        Based on the diagnosis, determine the resolution path:
+
+        - fix_directly: Code fix identified, low risk, AE can create PR
+        - escalate_to_owner: Domain-specific issue, owner identified in model META
+        - escalate_to_de: Infrastructure or upstream pipeline issue
+        - acknowledge_transient: Self-resolved Snowflake internal error
+        - recommend_suppression: Recurring noise, wrong alert routing
+        - defer_to_morning: After-hours alert, non-critical
+
+        Output: resolution type, list of suggested actions (ordered),
+        who to tag (Slack handle or team), urgency level,
+        and any relevant Airflow links for manual actions.
+      tools: []
+      context:
+        static: [on_call_conventions]
+        dynamic:
+          - from: classify_alert
+          - from: check_cascade
+          - from: get_model_context
+      output_schema:
+        type: object
+        required: [resolution_type, suggested_actions, who_to_tag, urgency]
+      budget:
+        max_llm_turns: 2
+        max_tokens: 8000
+
+    # Step 7: Generate triage report (thread summary + detailed investigation)
+    - id: generate_triage_report
+      mode: reason
+      instruction: |
+        Produce two artifacts from ALL prior step outputs:
+
+        Artifact 1 — Thread summary (concise, ≤ 10 lines, for Slack thread):
+        ```
+        TRIAGE: {model_name} — {classification}
+        Root cause: {one-line summary}
+        Impact: {cascade_count} models affected
+        Resolution: {resolution_type}
+        Action: {first suggested action}
+        Owner: {owner} | Tag: {who_to_tag}
+        Full investigation attached
+        ```
+
+        Artifact 2 — Detailed investigation file (Markdown):
+        Include ALL of: error details, failure history table, cascade analysis,
+        model analysis (SQL structure, lineage), diagnostic queries run with
+        results, root cause analysis, suggested actions with Airflow links,
+        and preventive recommendations.
+
+        The thread_summary should be a plain text string.
+        The investigation_report should be a Markdown string.
+      tools: []
+      context:
+        static: []
+        dynamic:
+          - from: parse_alert
+          - from: check_failure_history
+          - from: check_cascade
+          - from: get_model_context
+          - from: classify_alert
+          - from: determine_resolution
+      output_schema:
+        type: object
+        required: [thread_summary, investigation_report]
+      budget:
+        max_llm_turns: 2
+        max_tokens: 20000
+
+    # Step 8: Post triage report to Slack thread
+    - id: post_to_thread
+      mode: execute
+      delegate: shift.show_plan
+      requires_approval: false
+      context:
+        dynamic:
+          - from: generate_triage_report

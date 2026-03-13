@@ -1,0 +1,13 @@
+knowledge:
+  id: runbook_infrastructure
+  name: Infrastructure Diagnostic Runbook
+  description: Step-by-step triage for timeouts, internal errors, and warehouse contention
+
+  guidance:
+    - "For timeout: check QUERY_HISTORY for the model's recent execution times — is this run abnormally long?"
+    - "For timeout: check if the warehouse has high queue depth (concurrent queries backing up)"
+    - "For internal_error: Snowflake error codes 300005/300010 are transient — check if next run succeeded"
+    - "For internal_error: if recurring on same model, file Snowflake support ticket"
+    - "For warehouse_contention: check QUERY_HISTORY for long-running non-dbt queries on the same warehouse"
+    - "For warehouse_contention: check if Metaflow or other ML jobs are hogging the warehouse"
+    - "For warehouse_contention: recommend increasing max_clusters or moving heavy jobs to dedicated warehouse"

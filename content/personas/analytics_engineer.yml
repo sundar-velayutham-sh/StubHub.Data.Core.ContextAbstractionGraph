@@ -28,3 +28,16 @@ persona:
     naming: "snake_case, prefixed by layer (stg_, int_, fct_, dim_)"
     testing: "Every model has not_null on PK + unique test"
     documentation: "Every column has a description in schema.yml"
+
+  on_call_heuristics:
+    - "If 5+ models fail in same timeframe, check for cascade before investigating individually"
+    - "If error contains 'internal error' or '300005', likely transient — check if next run succeeded"
+    - "If model has zero queries in QUERY_HISTORY last 30 days, flag as potentially deprecated"
+    - "Always check recent GitHub commits before deep investigation — recent push is most common cause"
+    - "For duplicate row errors, always trace upstream joins — the DML uniqueness violation is a symptom"
+
+  on_call_anti_patterns:
+    - "Don't investigate cascade children — find and investigate the root model only"
+    - "Don't rerun a failing model without understanding why it failed"
+    - "Don't suppress alerts without documenting why and getting domain owner agreement"
+    - "Don't fix upstream data issues in the downstream model — fix at the source"

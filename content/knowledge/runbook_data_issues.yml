@@ -1,0 +1,14 @@
+knowledge:
+  id: runbook_data_issues
+  name: Data Issue Diagnostic Runbook
+  description: Step-by-step triage for duplicate rows, test failures, and upstream data problems
+
+  guidance:
+    - "For duplicate_row: query SELECT unique_key, COUNT(*) GROUP BY 1 HAVING COUNT(*) > 1 to find duplicates"
+    - "For duplicate_row: trace the join that creates the fanout — look for 1:many joins in CTEs"
+    - "For duplicate_row: check upstream tables for recent backfills that may have introduced duplicates"
+    - "For test_failure: read the compiled test SQL from the error message path"
+    - "For test_failure: run the test SQL manually to see the failing rows"
+    - "For upstream_data: check MAX(loaded_at) or MAX(created_at) on upstream tables for recent data changes"
+    - "For upstream_data: check DBT_RUN_RESULTS for upstream model failures in the same timeframe"
+    - "Always quantify the impact: how many rows affected, what percentage of total"

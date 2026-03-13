@@ -1,0 +1,13 @@
+knowledge:
+  id: runbook_code_errors
+  name: Code Error Diagnostic Runbook
+  description: Step-by-step triage for SQL compilation, invalid identifier, and permission errors
+
+  guidance:
+    - "For invalid_identifier: query INFORMATION_SCHEMA.COLUMNS for the source table to check if column exists with different casing or was renamed"
+    - "For invalid_identifier: check recent GitHub commits (last 48h) to the model file — column may have been renamed upstream"
+    - "For permission_error: run SHOW GRANTS ON SCHEMA to identify missing grants"
+    - "For permission_error: check if a new schema was recently created without GRANT statements"
+    - "For compilation_error: read the full model SQL and identify the failing line from the error message"
+    - "For compilation_error: check if upstream model changed its output columns"
+    - "Always check if the error is in the model itself or in a macro it references"

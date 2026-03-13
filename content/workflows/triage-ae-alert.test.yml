@@ -1,0 +1,141 @@
+conformance:
+  workflow_id: triage-ae-alert
+
+  steps:
+    parse_alert:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - alert_classification
+        - on_call_conventions
+      tools_include:
+        - snowflake_mcp.execute_query
+      has_instruction: true
+
+    check_failure_history:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - parse_alert
+      has_instruction: true
+
+    check_cascade:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - parse_alert
+      has_instruction: true
+
+    get_model_context:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - troubleshooting_patterns
+      tools_include:
+        - snowflake_mcp.execute_query
+        - github_cli.read_file
+        - github_cli.search_code
+      dynamic_refs_from:
+        - parse_alert
+      has_instruction: true
+
+    classify_alert:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_count: 0
+      knowledge_includes:
+        - alert_classification
+        - troubleshooting_patterns
+      dynamic_refs_from:
+        - parse_alert
+        - check_failure_history
+        - check_cascade
+        - get_model_context
+      has_instruction: true
+
+    diagnose_code_error:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - runbook_code_errors
+        - troubleshooting_patterns
+      tools_include:
+        - snowflake_mcp.execute_query
+        - snowflake_mcp.describe_table
+        - github_cli.read_file
+      dynamic_refs_from:
+        - parse_alert
+        - get_model_context
+      has_instruction: true
+
+    diagnose_data_issue:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - runbook_data_issues
+        - troubleshooting_patterns
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - parse_alert
+        - get_model_context
+      has_instruction: true
+
+    diagnose_infrastructure:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - runbook_infrastructure
+        - troubleshooting_patterns
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - parse_alert
+        - check_cascade
+      has_instruction: true
+
+    diagnose_known_issue:
+      type: ReasonRequest
+      persona: analytics_engineer
+      knowledge_includes:
+        - on_call_conventions
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - parse_alert
+        - check_failure_history
+        - get_model_context
+      has_instruction: true
+
+    determine_resolution:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_count: 0
+      knowledge_includes:
+        - on_call_conventions
+      dynamic_refs_from:
+        - classify_alert
+        - check_cascade
+        - get_model_context
+      has_instruction: true
+
+    generate_triage_report:
+      type: ReasonRequest
+      persona: analytics_engineer
+      tools_count: 0
+      dynamic_refs_from:
+        - parse_alert
+        - check_failure_history
+        - check_cascade
+        - get_model_context
+        - classify_alert
+        - determine_resolution
+      has_instruction: true
+
+    post_to_thread:
+      type: DelegateRequest
+      requires_approval: false
