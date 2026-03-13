@@ -1,13 +1,150 @@
 knowledge:
   id: runbook_code_errors
   name: Code Error Diagnostic Runbook
-  description: Step-by-step triage for SQL compilation, invalid identifier, and permission errors
+  description: Comprehensive diagnostic patterns for SQL compilation errors, invalid identifiers, permission failures, and schema drift
 
   guidance:
-    - "For invalid_identifier: query INFORMATION_SCHEMA.COLUMNS for the source table to check if column exists with different casing or was renamed"
-    - "For invalid_identifier: check recent GitHub commits (last 48h) to the model file — column may have been renamed upstream"
-    - "For permission_error: run SHOW GRANTS ON SCHEMA to identify missing grants"
-    - "For permission_error: check if a new schema was recently created without GRANT statements"
-    - "For compilation_error: read the full model SQL and identify the failing line from the error message"
-    - "For compilation_error: check if upstream model changed its output columns"
-    - "Always check if the error is in the model itself or in a macro it references"
+    # --- Invalid Identifier Errors ---
+    - |
+      PATTERN: Invalid Identifier — Column Renamed Upstream
+      SYMPTOMS: Error message "invalid identifier '<COLUMN_NAME>'" on a model
+      that was passing previously. No recent commits to this model file.
+      DIAGNOSTIC SQL:
+        -- Step 1: Check if column exists with different name or casing
+        SELECT column_name, data_type
+        FROM <source_db>.INFORMATION_SCHEMA.COLUMNS
+        WHERE table_schema = '<schema>'
+          AND table_name = '<table>'
+        ORDER BY ordinal_position;
+        -- Step 2: Check for recent schema changes (last 7 days)
+        SELECT * FROM SNOWFLAKE.ACCOUNT_USAGE.COLUMNS
+        WHERE table_name = '<table>'
+          AND deleted IS NOT NULL
+          AND deleted > DATEADD(day, -7, CURRENT_TIMESTAMP());
+        -- Step 3: Check recent commits to upstream model
+        -- git log --since="2 days ago" -- models/<upstream_model>.sql
+      RESOLUTION: Update column reference in the failing model. If upstream
+      renamed without notice, flag to the team for process improvement.
+
+    - |
+      PATTERN: Invalid Identifier — Case Sensitivity
+      SYMPTOMS: Column exists in INFORMATION_SCHEMA but query fails.
+      ROOT CAUSE: Snowflake folds unquoted identifiers to uppercase.
+      If the column was created with double quotes (e.g., "userId"),
+      it must always be referenced with double quotes.
+      DIAGNOSTIC SQL:
+        -- Check for mixed-case column names
+        SELECT column_name,
+               column_name = UPPER(column_name) as is_uppercase
+        FROM <db>.INFORMATION_SCHEMA.COLUMNS
+        WHERE table_name = '<table>'
+          AND column_name != UPPER(column_name);
+      RESOLUTION: Either quote the column reference in SQL, or recreate
+      the column with standard uppercase naming.
+
+    - |
+      DECISION TREE: Invalid Identifier Error
+      1. Extract the column name from the error message.
+      2. Query INFORMATION_SCHEMA.COLUMNS for the source table.
+         Column exists with exact name? -> Check for ambiguous references (multiple CTEs).
+         Column exists with different casing? -> Case sensitivity issue.
+         Column does not exist? -> Continue to step 3.
+      3. Check recent git commits to upstream models (last 48h).
+         Column was renamed? -> Update reference in failing model.
+         No recent changes? -> Continue to step 4.
+      4. Check if column was dropped from source system.
+         Dropped? -> Escalate to source data owner.
+         Never existed? -> Bug in model SQL — developer error.
+
+    # --- Permission Errors ---
+    - |
+      PATTERN: Permission Error — Missing Schema Grants
+      SYMPTOMS: "Insufficient privileges" or "Object does not exist or not
+      authorized" on a model referencing a new schema.
+      DIAGNOSTIC SQL:
+        -- Check grants on the schema
+        SHOW GRANTS ON SCHEMA <database>.<schema>;
+        -- Check grants on the specific table
+        SHOW GRANTS ON TABLE <database>.<schema>.<table>;
+        -- Check what role the dbt service account uses
+        SHOW GRANTS TO ROLE <dbt_role>;
+        -- Check role hierarchy
+        SHOW GRANTS OF ROLE <dbt_role>;
+      RESOLUTION: Add appropriate GRANT statements. For dbt projects,
+      add grants to the post-hook or a dedicated grants macro:
+        GRANT USAGE ON SCHEMA <schema> TO ROLE <dbt_role>;
+        GRANT SELECT ON ALL TABLES IN SCHEMA <schema> TO ROLE <dbt_role>;
+        GRANT SELECT ON FUTURE TABLES IN SCHEMA <schema> TO ROLE <dbt_role>;
+
+    - |
+      PATTERN: Permission Error — Role Hierarchy Gap
+      SYMPTOMS: Permission error on a table that other models access fine.
+      ROOT CAUSE: The failing model runs under a different role (e.g., a
+      task-specific role) that does not inherit from the role with access.
+      DIAGNOSTIC SQL:
+        -- Trace role hierarchy
+        SELECT grantee_name, role
+        FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES
+        WHERE granted_on = 'ROLE'
+          AND name = '<expected_role>'
+        ORDER BY grantee_name;
+      RESOLUTION: Grant the missing role inheritance or adjust the model's
+      run role configuration.
+
+    # --- SQL Compilation Errors ---
+    - |
+      PATTERN: SQL Compilation — Type Mismatch
+      SYMPTOMS: "Numeric value '<string>' is not recognized" or
+      "Cannot cast '<value>' to <type>".
+      DIAGNOSTIC SQL:
+        -- Check actual data types in source
+        SELECT column_name, data_type, numeric_precision, numeric_scale
+        FROM <db>.INFORMATION_SCHEMA.COLUMNS
+        WHERE table_name = '<table>'
+          AND column_name IN ('<col1>', '<col2>');
+        -- Check for dirty data causing cast failures
+        SELECT <column>, COUNT(*)
+        FROM <table>
+        WHERE TRY_CAST(<column> AS <target_type>) IS NULL
+          AND <column> IS NOT NULL
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 20;
+      RESOLUTION: Use TRY_CAST for nullable conversions. Fix source data
+      if the dirty values are upstream errors.
+
+    - |
+      PATTERN: SQL Compilation — Ambiguous Column Reference
+      SYMPTOMS: "Ambiguous column name '<column>'" in a multi-table query.
+      ROOT CAUSE: Two or more tables/CTEs in the query have a column with
+      the same name, and it is referenced without a table alias.
+      RESOLUTION: Always qualify column references with table aliases in
+      multi-table queries. Search the model SQL for unqualified references
+      to the ambiguous column.
+
+    - |
+      PATTERN: SQL Compilation — Missing CTE Reference
+      SYMPTOMS: "Object '<cte_name>' does not exist" inside a WITH block.
+      ROOT CAUSE: CTE is referenced before it is defined, or a typo in
+      the CTE name. dbt ref() might resolve to a model that was removed.
+      DIAGNOSTIC: Check if the referenced model still exists:
+        dbt ls --select <model_name>
+      RESOLUTION: Fix CTE ordering or update the ref() to the correct model.
+
+    - |
+      PATTERN: SQL Compilation — Upstream Schema Change
+      SYMPTOMS: Model fails with compilation error but model code is unchanged.
+      The upstream model changed its output columns.
+      DIAGNOSTIC SQL:
+        -- Compare current vs expected columns
+        SELECT column_name, data_type
+        FROM <db>.INFORMATION_SCHEMA.COLUMNS
+        WHERE table_schema = '<schema>' AND table_name = '<upstream_table>'
+        ORDER BY ordinal_position;
+        -- Check dbt manifest for expected contract
+        -- cat target/manifest.json | jq '.nodes["model.<project>.<upstream>"].columns'
+      RESOLUTION: Update the failing model to match the new upstream schema.
+      If the upstream change was unintentional, revert it.
+
+    # --- General Rules ---
+    - "Always check if the error is in the model itself or in a macro it references — read the full compiled SQL, not just the model file"
+    - "For any code error: check if the same error exists in other environments (dev, QA) — if it only fails in prod, it is likely a data or permission issue, not a code issue"
+    - "After fixing: run dbt compile on the model first to verify SQL is valid before triggering a full run"

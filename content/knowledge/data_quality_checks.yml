@@ -1,17 +1,178 @@
 knowledge:
   id: data_quality_checks
   domain: testing
-  description: "Data quality check patterns for validating dbt model outputs"
+  description: Comprehensive data quality check patterns including standard dbt tests, SCD2-specific checks, duplicate detection, freshness monitoring, and schema drift detection
+
   guidance:
+    # --- Standard dbt Test Types ---
+    - |
+      STANDARD DBT TEST TYPES AND WHAT THEY CATCH:
+      unique: Verifies primary key uniqueness. Catches join fanout, backfill
+        duplication, and SCD2 identity resolution issues.
+      not_null: Verifies required fields are populated. Catches upstream
+        schema changes that introduce NULLs and broken joins.
+      accepted_values: Verifies enum columns contain only known values.
+        Catches source system changes and data corruption.
+      relationships: Verifies foreign key integrity. Catches orphaned records
+        from out-of-order loading or failed upstream models.
+
+    # --- SCD2-Specific Quality Checks ---
+    - |
+      SCD2 QUALITY CHECKS:
+      These checks are critical for SCD Type 2 models. All SCD2 models
+      should have these tests in their schema.yml.
+
+      CHECK: Timeline Continuity
+      PURPOSE: Ensure no gaps between consecutive records for the same entity.
+      SQL:
+        WITH ordered AS (
+          SELECT entity_key, valid_from, valid_to,
+                 LAG(valid_to) OVER (PARTITION BY entity_key ORDER BY valid_from) as prev_valid_to
+          FROM <scd2_table>
+        )
+        SELECT * FROM ordered
+        WHERE prev_valid_to IS NOT NULL
+          AND valid_from != prev_valid_to;
+      EXPECTED: Zero rows.
+
+      CHECK: Exactly One Current Row Per Entity
+      PURPOSE: Ensure is_current=TRUE exists exactly once per entity.
+      SQL:
+        SELECT entity_key, COUNT(*) as current_count
+        FROM <scd2_table>
+        WHERE is_current = TRUE
+        GROUP BY 1 HAVING COUNT(*) != 1;
+      EXPECTED: Zero rows. If >0, see runbook_data_issues SCD2 patterns.
+
+      CHECK: Current Row Has NULL valid_to
+      PURPOSE: The active row should have valid_to = NULL or a far-future date.
+      SQL:
+        SELECT * FROM <scd2_table>
+        WHERE is_current = TRUE
+          AND valid_to IS NOT NULL
+          AND valid_to < '9999-12-31';
+      EXPECTED: Zero rows.
+
+      CHECK: Sessions/Metrics Monotonicity
+      PURPOSE: For accumulating SCD2 models (e.g., lifetime metrics),
+      cumulative values should never decrease across versions.
+      SQL:
+        WITH versioned AS (
+          SELECT entity_key, valid_from, <cumulative_metric>,
+                 LAG(<cumulative_metric>) OVER (
+                   PARTITION BY entity_key ORDER BY valid_from
+                 ) as prev_value
+          FROM <scd2_table>
+        )
+        SELECT * FROM versioned
+        WHERE prev_value IS NOT NULL AND <cumulative_metric> < prev_value;
+      EXPECTED: Zero rows. Non-zero indicates a backfill or recalculation issue.
+
+    # --- Duplicate Detection ---
+    - |
+      DUPLICATE DETECTION PATTERNS:
+      LEVEL 1 — Primary Key Duplicates:
+        SELECT <primary_key>, COUNT(*) as cnt
+        FROM <table>
+        GROUP BY 1 HAVING COUNT(*) > 1
+        ORDER BY cnt DESC LIMIT 20;
+
+      LEVEL 2 — Natural Key Duplicates (same business entity, different surrogate keys):
+        SELECT <natural_key_columns>, COUNT(*) as cnt
+        FROM <table>
+        GROUP BY <natural_key_columns> HAVING COUNT(*) > 1
+        ORDER BY cnt DESC LIMIT 20;
+
+      LEVEL 3 — Trace Duplication Source (find which CTE or join caused it):
+        Run the model SQL CTE-by-CTE, checking row counts at each stage:
+        WITH cte_1 AS (...) SELECT COUNT(*), COUNT(DISTINCT <key>) FROM cte_1;
+        The CTE where total count > distinct count is the fanout source.
+
+      LEVEL 4 — Check for Backfill-Caused Duplicates:
+        SELECT <key>, COUNT(DISTINCT loaded_at) as load_count,
+               MIN(loaded_at), MAX(loaded_at)
+        FROM <table>
+        GROUP BY 1 HAVING COUNT(DISTINCT loaded_at) > 1;
+
+    # --- Freshness Checks ---
+    - |
+      FRESHNESS CHECK PATTERNS:
+      SOURCE FRESHNESS (dbt source freshness test):
+        warn_after: {count: 12, period: hour}
+        error_after: {count: 24, period: hour}
+        loaded_at_field: _loaded_at
+
+      MANUAL FRESHNESS CHECK:
+        SELECT MAX(updated_at) as last_update,
+               DATEDIFF(hour, MAX(updated_at), CURRENT_TIMESTAMP()) as hours_stale
+        FROM <table>;
+
+      FRESHNESS BY PARTITION (for partitioned/incremental tables):
+        SELECT DATE_TRUNC('day', event_date) as partition_date,
+               MAX(_loaded_at) as last_load,
+               COUNT(*) as row_count
+        FROM <table>
+        WHERE event_date > DATEADD(day, -7, CURRENT_DATE())
+        GROUP BY 1 ORDER BY 1 DESC;
+
+    # --- Row Count Anomaly Detection ---
+    - |
+      ROW COUNT ANOMALY DETECTION:
+      Compare current row count against rolling average:
+        WITH daily_counts AS (
+          SELECT DATE_TRUNC('day', loaded_at) as load_date,
+                 COUNT(*) as row_count
+          FROM <table>
+          WHERE loaded_at > DATEADD(day, -30, CURRENT_TIMESTAMP())
+          GROUP BY 1
+        ),
+        with_avg AS (
+          SELECT *, AVG(row_count) OVER (
+            ORDER BY load_date ROWS BETWEEN 7 PRECEDING AND 1 PRECEDING
+          ) as rolling_avg
+          FROM daily_counts
+        )
+        SELECT * FROM with_avg
+        WHERE ABS(row_count - rolling_avg) / NULLIF(rolling_avg, 0) > 0.10;
+      THRESHOLD: Flag if daily count deviates >10% from 7-day rolling average.
+      Adjust threshold per table based on known variability.
+
+    # --- Schema Drift Detection ---
+    - |
+      SCHEMA DRIFT DETECTION:
+      Compare current schema against expected (from dbt contract or baseline):
+        -- Current schema
+        SELECT column_name, data_type, is_nullable, ordinal_position
+        FROM <db>.INFORMATION_SCHEMA.COLUMNS
+        WHERE table_schema = '<schema>' AND table_name = '<table>'
+        ORDER BY ordinal_position;
+
+        -- Check for new columns (not in dbt contract)
+        SELECT column_name FROM <db>.INFORMATION_SCHEMA.COLUMNS
+        WHERE table_schema = '<schema>' AND table_name = '<table>'
+          AND column_name NOT IN (<expected_column_list>);
+
+        -- Check for missing columns (in dbt contract but not in table)
+        SELECT value as expected_column
+        FROM TABLE(FLATTEN(INPUT => PARSE_JSON('<expected_columns_json>')))
+        WHERE value NOT IN (
+          SELECT column_name FROM <db>.INFORMATION_SCHEMA.COLUMNS
+          WHERE table_schema = '<schema>' AND table_name = '<table>'
+        );
+      USE CASE: Run after upstream source refreshes to catch breaking changes
+      before they propagate through dbt models.
+
+    # --- General Rules ---
     - "Always check row count before and after transformation — flag >10% variance"
     - "NULL rate checks: compare source vs target NULL percentages per column"
-    - "Uniqueness: verify primary keys are truly unique after joins"
-    - "Freshness: add source freshness tests — warn at 12h, error at 24h for daily models"
-    - "Referential integrity: foreign keys must exist in parent table"
-    - "Range validation: numeric columns should stay within expected bounds"
-    - "Accepted values: enum columns must only contain known values"
+    - "Referential integrity: foreign keys must exist in parent table — use dbt relationships test"
+    - "Range validation: numeric columns should stay within expected bounds — use dbt accepted_values or custom tests"
+    - "For SCD2 models: all four SCD2 checks above are mandatory, not optional"
+
   check_types:
-    row_count: "SELECT COUNT(*) vs expected range"
+    row_count: "SELECT COUNT(*) vs expected range or rolling average"
     null_rate: "SELECT COUNT(*) FILTER (WHERE col IS NULL) / COUNT(*)"
     uniqueness: "SELECT col, COUNT(*) GROUP BY col HAVING COUNT(*) > 1"
     freshness: "SELECT MAX(updated_at), DATEDIFF(hour, MAX(updated_at), CURRENT_TIMESTAMP())"
+    scd2_timeline: "Check timeline continuity, current flag accuracy, metrics monotonicity"
+    schema_drift: "Compare INFORMATION_SCHEMA.COLUMNS against dbt contract"

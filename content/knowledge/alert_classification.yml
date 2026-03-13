@@ -1,18 +1,209 @@
 knowledge:
   id: alert_classification
   name: AE Alert Classification Taxonomy
-  description: Maps error message patterns to alert types for on-call triage
+  description: Comprehensive alert type taxonomy with error patterns, severity mapping, routing rules, and real production examples
 
   guidance:
-    - "invalid identifier → classification: invalid_identifier (code error)"
-    - "Insufficient privileges or access control → classification: permission_error (code error)"
-    - "SQL compilation error (other patterns) → classification: compilation_error (code error)"
-    - "Duplicate row or DML action → classification: duplicate_row (data issue)"
-    - "Got N results, configured to fail → classification: test_failure (data issue)"
-    - "Error traces to upstream table or backfill → classification: upstream_data (data issue)"
-    - "exceeded or timeout or execution_time > 3600s → classification: timeout (infrastructure)"
-    - "internal error or Processing aborted → classification: internal_error (infrastructure)"
-    - "Multiple DAGs failing simultaneously → classification: warehouse_contention (infrastructure)"
-    - "Same error 3+ times in 7 days, self-resolves → classification: recurring_transient (known issue)"
-    - "Test fails intermittently, passes on rerun → classification: flaky_test (known issue)"
-    - "Pipeline has zero queries in QUERY_HISTORY last 30 days → classification: deprecated_pipeline (known issue)"
+    # --- Classification Taxonomy ---
+    - |
+      ALERT TYPE: invalid_identifier
+      CATEGORY: Code Error
+      SEVERITY: P3 (non-urgent, fix in business hours)
+      ERROR PATTERNS:
+        - "invalid identifier"
+        - "does not exist or not authorized"
+        - "unknown column"
+      EXAMPLE: "SQL compilation error: error line 42 at position 8
+        invalid identifier 'USER_SESSION_ID'"
+      ROUTING: -> runbook_code_errors (Invalid Identifier patterns)
+      COMMON CAUSE: Upstream column rename, case sensitivity, dropped column
+
+    - |
+      ALERT TYPE: permission_error
+      CATEGORY: Code Error
+      SEVERITY: P3 (non-urgent unless blocking critical pipeline)
+      ERROR PATTERNS:
+        - "Insufficient privileges"
+        - "access control"
+        - "not authorized"
+        - "Object .* does not exist or not authorized"
+      EXAMPLE: "SQL access control error: Insufficient privileges to operate
+        on schema 'DW.NEW_SCHEMA'"
+      ROUTING: -> runbook_code_errors (Permission Error patterns)
+      COMMON CAUSE: New schema without grants, role hierarchy gap
+
+    - |
+      ALERT TYPE: compilation_error
+      CATEGORY: Code Error
+      SEVERITY: P3 (fix in business hours)
+      ERROR PATTERNS:
+        - "SQL compilation error" (not matching invalid_identifier or permission)
+        - "syntax error"
+        - "unexpected"
+        - "Numeric value .* is not recognized"
+        - "Cannot cast"
+      EXAMPLE: "SQL compilation error: syntax error line 15 at position 0
+        unexpected 'FROM'"
+      ROUTING: -> runbook_code_errors (SQL Compilation patterns)
+      COMMON CAUSE: Type mismatch, ambiguous column, missing CTE, macro error
+
+    - |
+      ALERT TYPE: duplicate_row
+      CATEGORY: Data Issue
+      SEVERITY: P2 (affects data quality, investigate same day)
+      ERROR PATTERNS:
+        - "duplicate"
+        - "DML action"
+        - "unique_key test failed"
+        - "Got [0-9]+ results?, configured to fail if != 0"
+      EXAMPLE: "Failure in test unique_transaction_id: Got 3 results,
+        configured to fail if != 0"
+      ROUTING: -> runbook_data_issues (Duplicate Row patterns)
+      ESCALATION: If >1000 rows affected or downstream dashboards impacted -> P1
+
+    - |
+      ALERT TYPE: test_failure
+      CATEGORY: Data Issue
+      SEVERITY: P2 (data quality at risk)
+      ERROR PATTERNS:
+        - "Got [0-9]+ results?, configured to fail"
+        - "FAIL [0-9]+"
+        - "not_null test failed"
+        - "accepted_values test failed"
+        - "relationships test failed"
+      EXAMPLE: "FAIL 1 not_null_int_user_lifetime_metrics_resolved_user_id"
+      ROUTING: -> runbook_data_issues (Test Failure Diagnostic Steps)
+      NOTE: SCD2 test failures are P2 minimum. Do NOT downgrade to warn
+      if downstream models consume the data.
+
+    - |
+      ALERT TYPE: upstream_data
+      CATEGORY: Data Issue
+      SEVERITY: P2-P3 (depends on downstream impact)
+      ERROR PATTERNS:
+        - Error traces to source/staging table
+        - "source freshness" failure
+        - Model succeeds but data looks wrong (manual report)
+      EXAMPLE: "Source freshness failure: source.raw.events loaded_at is
+        26 hours old (threshold: 24h)"
+      ROUTING: -> runbook_data_issues (Upstream Source Data Change)
+      ESCALATION: If source system is down -> escalate to source team immediately
+
+    - |
+      ALERT TYPE: timeout
+      CATEGORY: Infrastructure
+      SEVERITY: P3 (unless critical pipeline, then P2)
+      ERROR PATTERNS:
+        - "exceeded"
+        - "timeout"
+        - "Statement reached its statement or warehouse timeout"
+        - execution_time > 3600 seconds
+      EXAMPLE: "Query exceeded the maximum execution time of 3600 seconds"
+      ROUTING: -> runbook_infrastructure (Timeout patterns)
+      FIRST CHECK: Was there warehouse contention at time of failure?
+
+    - |
+      ALERT TYPE: internal_error
+      CATEGORY: Infrastructure
+      SEVERITY: P3 (usually transient)
+      ERROR PATTERNS:
+        - "internal error"
+        - "Processing aborted"
+        - error code 300005
+        - error code 300010
+        - "unexpected error"
+      EXAMPLE: "100038 (P0000): internal error: Processing aborted due to error
+        300010:390820024"
+      ROUTING: -> runbook_infrastructure (Snowflake Internal Error patterns)
+      FIRST CHECK: Did the next scheduled run succeed? If yes, close as transient.
+
+    - |
+      ALERT TYPE: warehouse_contention
+      CATEGORY: Infrastructure
+      SEVERITY: P3 (P2 if blocking critical pipelines)
+      ERROR PATTERNS:
+        - Multiple models failing simultaneously on same warehouse
+        - Queue depth > 5 sustained
+        - Timeout errors correlated with high warehouse load
+      EXAMPLE: "5 models failed between 02:00-02:30 on TRANSFORM_WH,
+        all with timeout errors"
+      ROUTING: -> runbook_infrastructure (Warehouse Contention patterns)
+      DETECTION: Check if 3+ models failed on the same warehouse within 30 min
+
+    - |
+      ALERT TYPE: recurring_transient
+      CATEGORY: Known Issue
+      SEVERITY: P4 (monitor, suppress if appropriate)
+      ERROR PATTERNS:
+        - Same error 3+ times in 7 days
+        - Self-resolves on next run every time
+        - No data quality impact downstream
+      EXAMPLE: "int_session_metrics failed with internal error (3rd time
+        this week, auto-resolved each time)"
+      ROUTING: -> on_call_conventions (Suppression rules)
+      ACTION: Discuss with team. If consistently self-resolving, suppress
+      the alert with domain owner agreement.
+
+    - |
+      ALERT TYPE: flaky_test
+      CATEGORY: Known Issue
+      SEVERITY: P4 (fix underlying issue, suppress alert temporarily)
+      ERROR PATTERNS:
+        - Test fails intermittently
+        - Passes on manual rerun
+        - Non-deterministic row counts near threshold
+      EXAMPLE: "row_count test on stg_events: Got 1001 results
+        (threshold 1000), passed on rerun with 998"
+      ROUTING: -> troubleshooting_patterns (Pattern D: Discuss Alert Routing)
+      ACTION: Adjust test threshold or fix the root cause of non-determinism.
+
+    - |
+      ALERT TYPE: deprecated_pipeline
+      CATEGORY: Known Issue
+      SEVERITY: P4 (investigate deprecation, stop noise)
+      ERROR PATTERNS:
+        - Pipeline has zero queries in QUERY_HISTORY last 30 days
+        - No downstream consumers in dbt lineage
+        - Model owner has left the team
+      DETECTION SQL:
+        -- Check if pipeline is actively used
+        SELECT COUNT(*) as query_count
+        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+        WHERE query_text ILIKE '%<model_table>%'
+          AND start_time > DATEADD(day, -30, CURRENT_TIMESTAMP())
+          AND query_type = 'SELECT';
+      ROUTING: -> troubleshooting_patterns (Pattern G: Pipeline May Be Deprecated)
+      ACTION: Confirm with domain owner. If deprecated, disable the model
+      and remove the alert.
+
+    # --- Classification Decision Tree ---
+    - |
+      CLASSIFICATION DECISION TREE:
+      1. Parse error message text.
+      2. Match against patterns in priority order:
+         a. "internal error" or "300005" or "300010" -> internal_error
+         b. "invalid identifier" -> invalid_identifier
+         c. "Insufficient privileges" or "access control" -> permission_error
+         d. "timeout" or "exceeded" -> timeout
+         e. "duplicate" or "DML action" -> duplicate_row
+         f. "Got N results, configured to fail" -> test_failure
+         g. "SQL compilation error" -> compilation_error
+         h. Multiple models failing simultaneously -> warehouse_contention
+      3. Check recurrence:
+         - Same error 3+ times in 7 days AND self-resolves? -> recurring_transient
+         - Test passes on rerun? -> flaky_test
+      4. Check usage:
+         - Zero queries in 30 days? -> deprecated_pipeline
+      5. If no pattern matches -> classify as "unknown", escalate to senior AE
+
+    # --- Severity Mapping Summary ---
+    - |
+      SEVERITY REFERENCE:
+      P1 — Critical: Data corruption in production, customer-facing impact,
+           >1000 rows affected in core tables. Response: immediate.
+      P2 — High: Data quality test failure, duplicate rows, SCD2 issues.
+           Response: investigate same day, fix within 24h.
+      P3 — Medium: Code errors, timeouts, permission issues.
+           Response: fix in business hours, within 48h.
+      P4 — Low: Flaky tests, recurring transients, deprecated pipelines.
+           Response: batch with weekly maintenance, suppress if appropriate.

@@ -1,8 +1,184 @@
 knowledge:
   id: troubleshooting_patterns
   domain: debugging
-  description: "Common dbt model error patterns and their canonical fixes"
+  description: Seven canonical AE on-call response patterns derived from 12 real production alert threads, plus common SQL debugging patterns
+
   guidance:
+    # --- The 7 AE On-Call Response Patterns ---
+    - |
+      PATTERN A: Diagnose -> Fix -> PR -> Verify
+      WHEN TO USE: Code error or data issue with a clear root cause that
+      you can fix yourself (e.g., column rename, missing filter, bad join).
+      STEPS:
+        1. Diagnose: Run diagnostic SQL from the appropriate runbook.
+        2. Identify root cause: trace through compiled SQL, dbt lineage,
+           and upstream data.
+        3. Fix: Make the code change in a feature branch.
+        4. Test locally: dbt run + dbt test on the affected model.
+        5. PR: Create PR with description of root cause, fix, and
+           verification steps. Include the failing test output.
+        6. Verify: After merge and deploy, monitor the next scheduled run
+           to confirm the fix holds.
+      TOOLS: dbt, git, Snowflake worksheet, QUERY_HISTORY
+      EXAMPLE: Column renamed upstream, model references old name.
+        Fix: update column reference, add schema test, PR, deploy.
+      CASE STUDY: int_user_lifetime_metrics SCD2 fix (2026-03-07)
+
+    - |
+      PATTERN B: Trace Upstream -> Escalate
+      WHEN TO USE: The failing model's code is correct, but the data it
+      receives is wrong. The issue originates in a different team's domain
+      or in a source system outside AE control.
+      STEPS:
+        1. Diagnose: Confirm the model code is correct by reviewing the
+           compiled SQL and recent commits.
+        2. Trace upstream: Check source table freshness, row counts,
+           and data quality. Run diagnostic SQL on upstream tables.
+        3. Identify the upstream owner: Check DBT_MODELS.META.owner or
+           git blame on the upstream model.
+        4. Escalate: Message the owner with:
+           - What is failing (model name, test name, error)
+           - What you have verified (model code is correct)
+           - What upstream data looks wrong (specific query results)
+           - What you need from them (fix, timeline, workaround)
+        5. Document: Thread the escalation in #ae-alerts.
+      TOOLS: dbt lineage graph, INFORMATION_SCHEMA, git blame
+      EXAMPLE: Source system backfill introduced duplicate records.
+        AE model is correct but ingests bad data. Escalate to DE ingestion.
+
+    - |
+      PATTERN C: Transient / Self-Resolving
+      WHEN TO USE: Snowflake internal errors, brief warehouse contention,
+      network blips. The error is not reproducible and the next run succeeds.
+      STEPS:
+        1. Check the next scheduled run in DBT_RUN_RESULTS.
+        2. If it succeeded: log as transient, close the alert.
+        3. If it failed again: escalate to Pattern A or E.
+        4. If it is the 3rd+ occurrence this week: discuss suppression
+           with the team (Pattern D).
+      TOOLS: DBT_RUN_RESULTS, QUERY_HISTORY
+      COMMON MISTAKE: Do NOT retry SCD2 models as part of transient
+      handling. SCD2 delete+insert models may have corrupted data
+      that a retry will not fix. Always check for data issues first.
+      CASE STUDY: Snowflake 300010 error on staging model, auto-resolved
+        on 06:00 run. Logged and closed.
+
+    - |
+      PATTERN D: Discuss Alert Routing / Suppress
+      WHEN TO USE: An alert is generating noise — it fires frequently
+      but has no actionable impact, or the test threshold is wrong.
+      STEPS:
+        1. Gather evidence: How many times has this fired in the last 30
+           days? Does it self-resolve? Is there downstream impact?
+        2. Check for downstream consumers of the failing model.
+        3. Propose action to the team in #ae-alerts:
+           - Adjust test threshold (e.g., warn instead of error for
+             row count within 5% variance)
+           - Suppress the alert with a review date
+           - Fix the underlying non-determinism
+        4. Get domain owner agreement before suppressing.
+        5. Document the decision and review date.
+      TOOLS: DBT_RUN_RESULTS (frequency analysis), dbt lineage (consumers)
+      RULE: Never suppress SCD2 test failures or core fact table alerts.
+      EXAMPLE: Row count test on staging table fluctuates by 0.5% daily.
+        Threshold set at exact match causes daily alerts. Fix: set 2% threshold.
+
+    - |
+      PATTERN E: Infrastructure Contention
+      WHEN TO USE: Multiple models fail simultaneously, all pointing to
+      warehouse timeouts or queuing. The models themselves are fine.
+      STEPS:
+        1. Confirm it is contention: Check WAREHOUSE_LOAD_HISTORY for
+           queue depth > 5 at the time of failure.
+        2. Identify the contending workload: Check QUERY_HISTORY for
+           non-dbt queries on the same warehouse.
+        3. Short-term fix: Retry the failed models after contention clears.
+        4. Long-term fix: Coordinate with the team running the heavy
+           workload to move to a dedicated warehouse or stagger schedules.
+        5. Document: File a JIRA ticket for warehouse capacity planning.
+      TOOLS: WAREHOUSE_LOAD_HISTORY, QUERY_HISTORY
+      EXAMPLE: Metaflow training job ran during 02:00-03:00 window,
+        consumed all warehouse capacity. 8 dbt models timed out.
+
+    - |
+      PATTERN F: Defer to Next Day
+      WHEN TO USE: After-hours alert that is P3/P4, has no critical
+      downstream impact, and can wait for business hours.
+      STEPS:
+        1. Verify it is not a cascade root (check for other failures).
+        2. Verify no critical dashboards depend on this model refreshing
+           overnight.
+        3. Acknowledge in #ae-alerts: "<model> failed with <error>.
+           No downstream impact tonight. Deferring to tomorrow."
+        4. If the model has a flaky test causing repeated alerts, disable
+           the test temporarily with a TODO and JIRA ticket.
+        5. Add to the handoff summary or morning standup agenda.
+      TOOLS: dbt lineage, DBT_RUN_RESULTS
+      RULE: Never defer P1 or P2 alerts. When in doubt, investigate now.
+
+    - |
+      PATTERN G: Pipeline May Be Deprecated
+      WHEN TO USE: Alert fires on a model that nobody seems to own,
+      has no recent queries against it, and may no longer be needed.
+      STEPS:
+        1. Check QUERY_HISTORY for any queries against the model's table
+           in the last 30 days (excluding dbt runs):
+           SELECT COUNT(*) FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+           WHERE query_text ILIKE '%<table_name>%'
+             AND query_type = 'SELECT'
+             AND user_name NOT IN ('<dbt_service_account>')
+             AND start_time > DATEADD(day, -30, CURRENT_TIMESTAMP());
+        2. Check dbt lineage for downstream consumers.
+        3. Check git blame for the model's last significant edit.
+        4. If no consumers and no recent edits:
+           - Message the last committer or team lead to confirm deprecation.
+           - If confirmed: disable the model (dbt disabled: true), remove
+             from DAG schedule, suppress the alert.
+           - If uncertain: tag for review in next sprint planning.
+      TOOLS: QUERY_HISTORY, dbt lineage, git blame
+      EXAMPLE: legacy_campaign_metrics model, last edited 8 months ago,
+        zero SELECT queries in 30 days. Owner confirmed deprecated.
+
+    # --- Pattern Selection Decision Tree ---
+    - |
+      DECISION TREE: Selecting the Right Response Pattern
+      1. Is this a cascade (5+ failures in 1 hour)?
+         YES -> Find the root model. Apply the appropriate pattern to the
+                ROOT only. Ignore cascade children.
+      2. Is the error a Snowflake internal error (300005/300010)?
+         YES -> Pattern C (Transient). Check next run first.
+      3. Are multiple models timing out on the same warehouse?
+         YES -> Pattern E (Infrastructure Contention).
+      4. Is it after hours and P3/P4?
+         YES -> Pattern F (Defer to Next Day).
+      5. Is the model code correct but upstream data is wrong?
+         YES -> Pattern B (Trace Upstream -> Escalate).
+      6. Can you identify and fix the root cause yourself?
+         YES -> Pattern A (Diagnose -> Fix -> PR -> Verify).
+      7. Is the alert generating noise with no real impact?
+         YES -> Pattern D (Discuss Alert Routing / Suppress).
+      8. Does anyone still use this pipeline?
+         UNCLEAR -> Pattern G (Pipeline May Be Deprecated).
+
+    # --- Common Mistakes ---
+    - |
+      COMMON MISTAKES TO AVOID:
+      1. Investigating cascade children individually. Always find the root.
+      2. Retrying SCD2 models without checking for data corruption.
+         SCD2 delete+insert models leave orphaned rows that retry cannot fix.
+      3. Changing test severity to "warn" on SCD2 tests. The bad rows
+         propagate to downstream models and become harder to clean up.
+      4. Suppressing alerts without domain owner agreement.
+      5. Assuming a timeout means the warehouse needs to be bigger.
+         Check for query optimization first (bad join order, missing
+         clustering, full table scans).
+      6. Ignoring recurring transient errors. If the same model fails
+         3+ times in a week, there is an underlying issue even if it
+         self-resolves.
+      7. Not documenting your investigation. Always thread notes in the
+         original alert message for the next on-call.
+
+    # --- Standard SQL Debugging Patterns ---
     - "CAST errors: check source column types vs target — use TRY_CAST for nullable conversions"
     - "JOIN errors: verify join keys match cardinality — look for fanout (1:N becoming N:M)"
     - "NULL propagation: trace NULLs upstream — fix at the source, not with COALESCE hacks"
@@ -11,13 +187,14 @@ knowledge:
     - "Division by zero: wrap with NULLIF(denominator, 0) — never use CASE WHEN"
     - "Timestamp timezone issues: always use CONVERT_TIMEZONE before date comparisons"
     - "Duplicate rows after JOIN: check if join produces fanout — add QUALIFY ROW_NUMBER if needed"
+
   error_categories:
     cast_error:
       signals: ["invalid type", "cannot cast", "numeric value is not recognized"]
-      fix_pattern: "Identify source column type → TRY_CAST to target → add NOT NULL test"
+      fix_pattern: "Identify source column type -> TRY_CAST to target -> add NOT NULL test"
     join_error:
       signals: ["ambiguous column", "duplicate rows", "fanout"]
-      fix_pattern: "Check join cardinality → add DISTINCT or QUALIFY → verify row counts"
+      fix_pattern: "Check join cardinality -> add DISTINCT or QUALIFY -> verify row counts"
     logic_error:
       signals: ["unexpected NULL", "wrong aggregation", "missing rows"]
-      fix_pattern: "Trace data lineage → compare expected vs actual at each CTE → fix source"
+      fix_pattern: "Trace data lineage -> compare expected vs actual at each CTE -> fix source"

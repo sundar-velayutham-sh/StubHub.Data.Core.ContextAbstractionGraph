@@ -1,19 +1,190 @@
 knowledge:
   id: runbook_data_issues
   name: Data Issue Diagnostic Runbook
-  description: Step-by-step triage for duplicate rows, test failures, and upstream data problems
+  description: Comprehensive diagnostic patterns for duplicate rows, SCD2 failures, test failures, and upstream data problems
 
   guidance:
-    - "For duplicate_row: query SELECT unique_key, COUNT(*) GROUP BY 1 HAVING COUNT(*) > 1 to find duplicates"
-    - "For duplicate_row: trace the join that creates the fanout — look for 1:many joins in CTEs"
-    - "For duplicate_row: check upstream tables for recent backfills that may have introduced duplicates"
-    - "For test_failure: read the compiled test SQL from the error message path"
-    - "For test_failure: run the test SQL manually to see the failing rows"
-    - "For upstream_data: check MAX(loaded_at) or MAX(created_at) on upstream tables for recent data changes"
-    - "For upstream_data: check DBT_RUN_RESULTS for upstream model failures in the same timeframe"
-    - "Always quantify the impact: how many rows affected, what percentage of total"
-    - "CRITICAL — SCD Type 2 with identity resolution (delete+insert): retry does NOT self-heal bad rows. Once the anon_id is resolved, the model's self-scan no longer finds it, so the bad row from the previous run persists. You MUST manually DELETE the bad rows before rerunning."
-    - "CRITICAL — SCD Type 2 test failures: do NOT suggest changing test severity to warn if downstream tables consume the SCD data. The incorrect row will propagate and make cleanup harder. Tests should fail hard to catch it early."
-    - "For SCD2 identity resolution failures: (1) identify the bad rows via the test SQL, (2) manually DELETE them, (3) rerun the model, (4) verify tests pass"
-    - "SCD2 incremental models with volume-based exclusion filters (e.g., exclude users with >N sessions as bots) can create stale is_current=TRUE rows. When a user crosses the volume threshold, they get excluded from the incremental run, so their previous current row never gets valid_to updated. Look for high-volume filters in the WHERE clause of incremental models."
-    - "When diagnosing SCD2 duplicate current rows: check if the user was recently excluded by a bot/volume filter. Query the model's base CTE filter thresholds and compare against the affected user's session count."
+    # --- SCD Type 2 Patterns ---
+    - |
+      PATTERN: SCD2 Volume Filter Exclusion Gap
+      SYMPTOMS: Duplicate is_current=TRUE rows for same entity. SCD2 timeline
+      continuity test fails with 1-2 rows. Affects incremental SCD2 models that
+      exclude high-volume users as bots.
+      ROOT CAUSE: Incremental model has a bot/high-volume exclusion filter
+      (e.g., HAVING count(*) > 600 sessions). When a user crosses the threshold
+      between runs, they get excluded from processing. Their previous
+      is_current=TRUE row never gets valid_to updated. The next run inserts
+      a new current row for that user from a different identity resolution,
+      creating two current rows.
+      DIAGNOSTIC SQL:
+        -- Step 1: Find duplicate current rows
+        SELECT resolved_user_id, COUNT(*)
+        FROM <model_table>
+        WHERE is_current = TRUE
+        GROUP BY 1 HAVING COUNT(*) > 1;
+        -- Step 2: Check if user crosses bot threshold
+        SELECT user_id, COUNT(*) as session_count
+        FROM <base_sessions_table>
+        WHERE user_id IN (<affected_user_ids>)
+        GROUP BY 1;
+        -- Step 3: Check for prior manual cleanup
+        SELECT query_text, user_name, start_time
+        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+        WHERE query_text ILIKE '%DELETE%<model_table>%'
+          AND start_time > DATEADD(day, -7, CURRENT_TIMESTAMP())
+        ORDER BY start_time DESC;
+      RESOLUTION: Manually DELETE the stale current row, then rerun the model.
+      Retry alone will NOT fix this — the excluded user will be skipped again.
+      CRITICAL: Do NOT change test severity to warn. Downstream consumers
+      depend on exactly one is_current=TRUE row per entity.
+      CASE STUDY: int_user_lifetime_metrics (2026-03-07, 2026-03-13)
+
+    - |
+      PATTERN: SCD2 Identity Resolution Delete+Insert Blind Spot
+      SYMPTOMS: Bad rows persist after rerun. Model uses delete+insert strategy
+      with identity resolution (anon_id -> resolved_user_id).
+      ROOT CAUSE: Once the anon_id is resolved to a user_id, the model's
+      self-scan no longer finds the original anon_id row. The bad row from the
+      previous run persists because the DELETE targets a key that no longer
+      matches.
+      DIAGNOSTIC SQL:
+        -- Find orphaned rows where the identity no longer matches
+        SELECT a.* FROM <model_table> a
+        LEFT JOIN <identity_bridge> b
+          ON a.anon_id = b.anon_id AND a.resolved_user_id = b.resolved_user_id
+        WHERE b.anon_id IS NULL AND a.is_current = TRUE;
+      RESOLUTION:
+        1. Identify bad rows via the test SQL output
+        2. Manually DELETE the orphaned rows
+        3. Rerun the model
+        4. Verify tests pass
+      CRITICAL: Retry does NOT self-heal. The model cannot see the bad rows.
+
+    - |
+      PATTERN: SCD2 Timeline Continuity Gap
+      SYMPTOMS: dbt test for SCD2 timeline continuity fails. Rows have gaps
+      between valid_from and valid_to of consecutive records.
+      DIAGNOSTIC SQL:
+        -- Find gaps in SCD2 timeline
+        WITH ordered AS (
+          SELECT *, LAG(valid_to) OVER (
+            PARTITION BY entity_key ORDER BY valid_from
+          ) as prev_valid_to
+          FROM <model_table>
+        )
+        SELECT * FROM ordered
+        WHERE valid_from != prev_valid_to
+          AND prev_valid_to IS NOT NULL;
+      RESOLUTION: Usually caused by a backfill or late-arriving data.
+      Check if a manual backfill ran during the gap period.
+
+    - |
+      DECISION TREE: SCD2 Model Failure
+      1. Is this an SCD2 model? Check for is_current, valid_from, valid_to columns.
+      2. Does the model have volume/bot exclusion filters? Check WHERE/HAVING clauses.
+         YES -> Check if affected user crossed the threshold (Volume Filter pattern)
+         NO  -> Continue to step 3
+      3. Does the model use identity resolution (anon_id -> resolved_user_id)?
+         YES -> Check for orphaned rows (Delete+Insert Blind Spot pattern)
+         NO  -> Continue to step 4
+      4. Check QUERY_HISTORY for prior manual DML by human users:
+         SELECT query_text, user_name, start_time
+         FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+         WHERE query_text ILIKE '%DELETE%<table>%'
+           AND user_name != 'DBT_RUNNER'
+           AND start_time > DATEADD(day, -7, CURRENT_TIMESTAMP());
+         If found -> Someone already attempted cleanup. Verify it worked.
+         If not found -> Manual cleanup is needed. Do NOT just retry.
+
+    # --- Duplicate Row Diagnostics ---
+    - |
+      PATTERN: Duplicate Rows from Join Fanout
+      SYMPTOMS: unique_key test fails. Row count higher than expected.
+      DIAGNOSTIC SQL:
+        -- Step 1: Find the duplicates
+        SELECT <unique_key>, COUNT(*) as cnt
+        FROM <model_table>
+        GROUP BY 1 HAVING COUNT(*) > 1
+        ORDER BY cnt DESC LIMIT 20;
+        -- Step 2: Trace back through CTEs to find the fanout
+        -- Run the model SQL CTE-by-CTE, checking row counts at each stage:
+        WITH cte_1 AS (...) SELECT COUNT(*), COUNT(DISTINCT <key>) FROM cte_1;
+        -- The CTE where COUNT(*) > COUNT(DISTINCT key) is where fanout happens.
+      RESOLUTION: Fix the join causing fanout. Add QUALIFY ROW_NUMBER() if
+      deduplication is the correct business logic. Never mask with DISTINCT
+      on the final SELECT without understanding the root cause.
+
+    - |
+      PATTERN: Duplicate Rows from Backfill
+      SYMPTOMS: unique_key test fails after a backfill ran. Duplicates have
+      different loaded_at timestamps.
+      DIAGNOSTIC SQL:
+        -- Check for rows with multiple load timestamps
+        SELECT <unique_key>, COUNT(DISTINCT loaded_at) as load_count,
+               MIN(loaded_at) as first_load, MAX(loaded_at) as last_load
+        FROM <model_table>
+        GROUP BY 1 HAVING COUNT(DISTINCT loaded_at) > 1
+        LIMIT 20;
+      RESOLUTION: For incremental models, a full refresh may be needed:
+        dbt run --select <model> --full-refresh
+      For non-incremental models, check if the source table has duplicates
+      from the backfill and deduplicate at the source.
+
+    # --- Test Failure Diagnostics ---
+    - |
+      PATTERN: dbt Test Failure Diagnostic Steps
+      SYMPTOMS: Alert says "Got N results, configured to fail if != 0"
+      STEPS:
+        1. Find the compiled test SQL from the error path:
+           target/compiled/<project>/tests/<test_file>.sql
+           or from the dbt artifacts: run_results.json -> compiled_code
+        2. Run the compiled SQL manually in Snowflake to see failing rows
+        3. Quantify impact: how many rows, what % of total
+        4. Check if failure is new or recurring:
+           SELECT * FROM <project>.DBT_RUN_RESULTS
+           WHERE model_name ILIKE '%<test_name>%'
+             AND status = 'fail'
+           ORDER BY completed_at DESC LIMIT 10;
+      DECISION: If test has been failing intermittently, check for flaky
+      data patterns. If first failure, investigate root cause immediately.
+
+    # --- Cascade Detection ---
+    - |
+      PATTERN: Cascade Failure Detection
+      SYMPTOMS: Multiple models fail in the same DAG run or timeframe.
+      DIAGNOSTIC SQL:
+        -- Find all failures in the same timeframe
+        SELECT model_name, status, execution_time, completed_at, error_message
+        FROM <project>.DBT_RUN_RESULTS
+        WHERE status IN ('fail', 'error')
+          AND completed_at > DATEADD(hour, -6, CURRENT_TIMESTAMP())
+        ORDER BY completed_at ASC;
+      RULE: If 5+ models fail in the same timeframe, find the ROOT model
+      (the one that failed first or the one all others depend on). Only
+      investigate the root model. Children will self-heal once the root
+      is fixed. Do NOT investigate cascade children individually.
+
+    # --- Upstream Data Issues ---
+    - |
+      PATTERN: Upstream Source Data Change
+      SYMPTOMS: Model fails with data quality issues but model code has
+      not changed recently.
+      DIAGNOSTIC SQL:
+        -- Check upstream table freshness
+        SELECT MAX(loaded_at) as last_load,
+               DATEDIFF(hour, MAX(loaded_at), CURRENT_TIMESTAMP()) as hours_ago
+        FROM <upstream_table>;
+        -- Check for schema changes in upstream
+        SELECT column_name, data_type, ordinal_position
+        FROM <upstream_db>.INFORMATION_SCHEMA.COLUMNS
+        WHERE table_name = '<upstream_table>'
+        ORDER BY ordinal_position;
+        -- Compare against expected schema in dbt source definition
+      RESOLUTION: If schema changed, update the dbt model. If data quality
+      changed, escalate to the upstream data owner.
+
+    # --- General Rules ---
+    - "Always quantify impact before deciding severity: how many rows affected, what percentage of total, which downstream models or dashboards are affected"
+    - "Check DBT_RUN_RESULTS for the model's recent history before assuming this is a new issue — it may have been failing for days"
+    - "Check QUERY_HISTORY for manual DML by human users — someone may have already attempted a fix"
+    - "For any data issue: screenshot or copy the failing test SQL output. You will need it for the PR description."

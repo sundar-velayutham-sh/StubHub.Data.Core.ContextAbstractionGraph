@@ -1,15 +1,151 @@
 knowledge:
   id: on_call_conventions
   name: AE On-Call Conventions
-  description: Response SLAs, escalation paths, and team ownership mapping
+  description: Complete on-call protocol including rotation, SLAs, escalation paths, suppression rules, and handoff procedures
 
   guidance:
-    - "On-call rotation is weekly, tracked in #ae-alerts channel topic"
-    - "In-hours priority: respond within 30 minutes during business hours"
-    - "Urgent priority: respond within 15 minutes, may auto-create incident"
-    - "Cascade rule: if 5+ models fail in same timeframe, investigate root model only"
-    - "Transient rule: if error contains 'internal error' or '300005', check if next run succeeded"
-    - "Suppression: always get domain owner agreement before suppressing an alert"
-    - "Escalation to DE: infrastructure issues, ingestion pipeline failures, warehouse contention"
-    - "Escalation to domain owner: domain-specific data issues, model logic questions"
-    - "After-hours: defer non-urgent to next business day, disable flaky tests to stop noise"
+    # --- Rotation Protocol ---
+    - |
+      WEEKLY ROTATION PROTOCOL:
+      - Rotation is weekly, Monday 9am to Monday 9am.
+      - Current on-call is tracked in #ae-alerts channel topic.
+      - Handoff: outgoing on-call posts a summary of open issues in #ae-alerts
+        at end of shift. Include: unresolved alerts, in-progress PRs,
+        deferred investigations, any suppressed alerts and why.
+      - If on-call person is OOO, they must find a swap BEFORE their shift.
+        Post the swap in #ae-alerts for visibility.
+
+    # --- Response SLAs ---
+    - |
+      RESPONSE SLA BY PRIORITY:
+      P1 — Critical (data corruption, customer-facing):
+        In-hours: 15 minutes to acknowledge, 1 hour to have a fix or mitigation.
+        After-hours: 15 minutes to acknowledge. Page secondary if needed.
+      P2 — High (data quality failure, SCD2 issues):
+        In-hours: 30 minutes to acknowledge, investigate same day.
+        After-hours: Acknowledge, defer investigation to next morning unless
+        it blocks a critical dashboard refresh.
+      P3 — Medium (code errors, timeouts, permissions):
+        In-hours: 1 hour to acknowledge, fix within 48 hours.
+        After-hours: Defer to next business day.
+      P4 — Low (flaky tests, transients, deprecated):
+        In-hours: Batch with weekly maintenance.
+        After-hours: Ignore until next business day.
+
+    # --- Cascade Rule ---
+    - |
+      CASCADE DETECTION AND HANDLING:
+      If 5+ models fail in the same timeframe (within 1 hour):
+        1. Do NOT investigate each failure individually.
+        2. Find the root model — the earliest failure or the one all others
+           depend on (check dbt lineage graph).
+        3. Fix the root model only.
+        4. Rerun the root model, then trigger downstream refreshes.
+        5. Cascade children will self-heal.
+      DETECTION SQL:
+        SELECT model_name, status, completed_at, error_message
+        FROM <project>.DBT_RUN_RESULTS
+        WHERE status IN ('fail', 'error')
+          AND completed_at > DATEADD(hour, -2, CURRENT_TIMESTAMP())
+        ORDER BY completed_at ASC;
+
+    # --- Escalation Paths ---
+    - |
+      ESCALATION BY DOMAIN:
+      When an alert requires domain expertise beyond AE on-call capability:
+        CX (Customer Experience) domain -> Cole
+        Pricing domain -> Albert
+        Supply domain -> Dustin
+        Finance / Payments domain -> Check DBT_MODELS.META.owner
+        Marketing / Campaigns domain -> Check DBT_MODELS.META.owner
+        Infrastructure / Warehouse -> DE team lead
+        Source system issues (SQL Server, APIs) -> DE ingestion team
+        Snowflake platform issues -> File support ticket + notify DE lead
+      HOW TO FIND OWNER:
+        Check the dbt model's meta.owner field in schema.yml or in
+        DBT_MODELS table. If no owner tagged, check git blame for the
+        model file's most recent significant committer.
+
+    - |
+      ESCALATION TO DE TEAM:
+      Escalate to the DE team (not domain owner) for:
+        - Infrastructure issues (warehouse contention, Snowflake errors)
+        - Ingestion pipeline failures (Fivetran, custom extractors)
+        - Airflow/Astronomer DAG failures not related to dbt model logic
+        - Snowflake account-level issues (storage, credit, role management)
+
+    # --- Suppression Rules ---
+    - |
+      WHEN TO SUPPRESS AN ALERT:
+      Suppression means disabling the alert rule (not just ignoring it).
+      REQUIREMENTS:
+        1. Domain owner must agree to suppression.
+        2. Document the reason in the alert configuration.
+        3. Set a review date (max 30 days) to re-evaluate.
+        4. Post in #ae-alerts that the alert is being suppressed and why.
+      VALID REASONS TO SUPPRESS:
+        - Alert fires on a model with no downstream consumers (deprecated)
+        - Alert is a known transient that self-resolves every time (3+ occurrences)
+        - Test threshold is too sensitive and generates false positives
+        - Model is being actively refactored (suppress until refactor lands)
+      NEVER SUPPRESS:
+        - SCD2 test failures (downstream impact is high)
+        - Duplicate row alerts on core fact tables
+        - Permission errors (they indicate a configuration gap)
+
+    # --- When to Defer ---
+    - |
+      WHEN TO DEFER TO NEXT DAY:
+      Defer an alert investigation to the next business day when:
+        - It is after hours AND the alert is P3 or P4
+        - The failing model has no downstream consumers running overnight
+        - The issue is a known intermittent that will likely self-resolve
+        - You have already verified it is not a cascade root
+      HOW TO DEFER:
+        1. Acknowledge the alert in #ae-alerts with a brief note:
+           "Acknowledged, P3 timeout on <model>. Deferring to tomorrow.
+           Next run at 06:00 may self-resolve."
+        2. If the model has a flaky test causing noise, disable the test
+           temporarily with a TODO comment and a JIRA ticket.
+        3. Add it to the handoff summary for the next on-call or next morning.
+
+    # --- Transient Error Handling ---
+    - |
+      TRANSIENT ERROR PROTOCOL:
+      For errors that are likely transient (Snowflake internal errors,
+      brief warehouse contention):
+        1. Check if the next scheduled run succeeded.
+        2. If yes: log as transient, no action needed.
+        3. If no: retry once manually.
+        4. If retry fails: escalate — it is no longer transient.
+      DO NOT retry SCD2 models without checking for data corruption first.
+      Retrying an SCD2 model with orphaned rows will NOT fix the issue
+      and may make it worse.
+
+    # --- Incident.io Status Updates ---
+    - |
+      INCIDENT.IO STATUS UPDATES:
+      For P1 and P2 incidents tracked in incident.io:
+        - Update status every 30 minutes while investigating.
+        - Status progression: Investigating -> Identified -> Monitoring -> Resolved
+        - Include: what you know, what you are doing, ETA if possible.
+        - Tag affected dashboards or consumers in the incident.
+        - Post resolution summary: root cause, fix applied, prevention plan.
+
+    # --- Handoff Protocol ---
+    - |
+      ON-CALL HANDOFF CHECKLIST:
+      At the end of your on-call shift, post in #ae-alerts:
+        1. OPEN ISSUES: Any unresolved alerts with status and next steps.
+        2. IN-PROGRESS: PRs submitted but not yet merged.
+        3. DEFERRED: Alerts deferred to next day with reason.
+        4. SUPPRESSED: Any alerts suppressed this week with reason and
+           review date.
+        5. PATTERNS: Any recurring issues the next on-call should watch for.
+        6. CONTEXT: Any relevant Slack threads or JIRA tickets.
+
+    # --- General Rules ---
+    - "Always thread your investigation notes in the original alert message — do not start a new thread"
+    - "When in doubt about severity, escalate UP not DOWN — a false P2 is better than a missed P1"
+    - "After fixing an issue, always verify the fix by checking the next scheduled run — do not assume it worked"
+    - "Keep a running log of alert patterns across your shift — it helps identify systemic issues"

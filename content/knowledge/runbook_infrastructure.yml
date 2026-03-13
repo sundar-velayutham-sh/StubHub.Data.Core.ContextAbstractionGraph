@@ -1,13 +1,178 @@
 knowledge:
   id: runbook_infrastructure
   name: Infrastructure Diagnostic Runbook
-  description: Step-by-step triage for timeouts, internal errors, and warehouse contention
+  description: Comprehensive diagnostic patterns for timeouts, Snowflake internal errors, warehouse contention, and resource failures
 
   guidance:
-    - "For timeout: check QUERY_HISTORY for the model's recent execution times — is this run abnormally long?"
-    - "For timeout: check if the warehouse has high queue depth (concurrent queries backing up)"
-    - "For internal_error: Snowflake error codes 300005/300010 are transient — check if next run succeeded"
-    - "For internal_error: if recurring on same model, file Snowflake support ticket"
-    - "For warehouse_contention: check QUERY_HISTORY for long-running non-dbt queries on the same warehouse"
-    - "For warehouse_contention: check if Metaflow or other ML jobs are hogging the warehouse"
-    - "For warehouse_contention: recommend increasing max_clusters or moving heavy jobs to dedicated warehouse"
+    # --- Timeout Patterns ---
+    - |
+      PATTERN: Query Timeout — Warehouse Undersized
+      SYMPTOMS: Model fails with "Statement reached its statement or
+      warehouse timeout" or execution_time exceeds configured limit.
+      DIAGNOSTIC SQL:
+        -- Step 1: Check recent execution times for this model
+        SELECT query_id, query_text, warehouse_name, warehouse_size,
+               execution_status, total_elapsed_time/1000 as elapsed_sec,
+               bytes_scanned, rows_produced, partitions_scanned, partitions_total
+        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+        WHERE query_text ILIKE '%<model_identifier>%'
+          AND start_time > DATEADD(day, -7, CURRENT_TIMESTAMP())
+        ORDER BY start_time DESC LIMIT 10;
+        -- Step 2: Check if data volume increased
+        SELECT COUNT(*) as row_count,
+               SUM(BYTES) / (1024*1024*1024) as gb_size
+        FROM <db>.INFORMATION_SCHEMA.TABLES
+        WHERE table_name = '<source_table>';
+        -- Step 3: Check query profile for bottlenecks
+        -- Use Snowflake UI: Query History -> Query Profile for the failed query_id
+      RESOLUTION OPTIONS (in order of preference):
+        1. Optimize the query (add clustering, prune partitions, fix join order)
+        2. Increase warehouse size for this specific model run
+        3. Increase statement timeout if the query is legitimately long-running
+
+    - |
+      PATTERN: Query Timeout — Concurrent Load
+      SYMPTOMS: Model that normally completes in N minutes times out.
+      Other queries on the same warehouse are also slow.
+      DIAGNOSTIC SQL:
+        -- Check warehouse load at time of failure
+        SELECT start_time, end_time, warehouse_name,
+               AVG(avg_running) as avg_concurrent,
+               MAX(avg_queued_load) as max_queued
+        FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_LOAD_HISTORY
+        WHERE warehouse_name = '<warehouse>'
+          AND start_time > DATEADD(hour, -6, CURRENT_TIMESTAMP())
+        ORDER BY start_time;
+        -- Find the heavy queries competing for resources
+        SELECT query_id, user_name, query_type,
+               total_elapsed_time/1000 as elapsed_sec,
+               warehouse_name, start_time
+        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+        WHERE warehouse_name = '<warehouse>'
+          AND start_time BETWEEN '<failure_time - 1h>' AND '<failure_time + 1h>'
+          AND total_elapsed_time > 300000  -- > 5 min
+        ORDER BY total_elapsed_time DESC LIMIT 20;
+      RESOLUTION: Identify the competing workload. If it is Metaflow or ML
+      jobs, coordinate to move them to a dedicated warehouse. If it is
+      concurrent dbt runs, stagger the schedules.
+
+    # --- Snowflake Internal Errors ---
+    - |
+      PATTERN: Snowflake Internal Error — Transient
+      SYMPTOMS: Error codes 300005, 300010. Message contains "internal error"
+      or "Processing aborted due to error".
+      DIAGNOSTIC SQL:
+        -- Check if the next scheduled run succeeded
+        SELECT model_name, status, completed_at, execution_time
+        FROM <project>.DBT_RUN_RESULTS
+        WHERE model_name = '<model>'
+        ORDER BY completed_at DESC LIMIT 5;
+      DECISION TREE:
+        1. Did the next run succeed?
+           YES -> Transient error, no action needed. Log and close.
+           NO  -> Continue to step 2.
+        2. Has the error occurred 3+ times on the same model?
+           YES -> File Snowflake support ticket with query_ids.
+           NO  -> Retry once manually, then escalate if still failing.
+      ESCALATION: For Snowflake support tickets, include:
+        - Account name, warehouse name
+        - Query ID(s) from QUERY_HISTORY
+        - Error message and error code
+        - Timestamp range of failures
+
+    - |
+      PATTERN: Snowflake Internal Error — Recurring on Same Model
+      SYMPTOMS: Same model fails with internal error 3+ times in 7 days.
+      DIAGNOSTIC SQL:
+        SELECT query_id, error_code, error_message, start_time
+        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+        WHERE query_text ILIKE '%<model_identifier>%'
+          AND error_code IS NOT NULL
+          AND start_time > DATEADD(day, -7, CURRENT_TIMESTAMP())
+        ORDER BY start_time DESC;
+      RESOLUTION: File Snowflake support ticket. In the meantime,
+      try running on a different warehouse size — some internal errors
+      are related to specific execution plans at specific sizes.
+
+    # --- Warehouse Contention ---
+    - |
+      PATTERN: Warehouse Contention — Metaflow/ML Blocking
+      SYMPTOMS: dbt models queue or timeout during ML pipeline execution.
+      Warehouse shows high queue depth.
+      DIAGNOSTIC SQL:
+        -- Check for non-dbt queries on the warehouse
+        SELECT user_name, query_type, COUNT(*) as query_count,
+               AVG(total_elapsed_time)/1000 as avg_sec,
+               SUM(total_elapsed_time)/1000 as total_sec
+        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+        WHERE warehouse_name = '<warehouse>'
+          AND start_time > DATEADD(hour, -6, CURRENT_TIMESTAMP())
+          AND user_name != '<dbt_service_account>'
+        GROUP BY 1, 2 ORDER BY total_sec DESC;
+        -- Check warehouse queue depth
+        SELECT start_time,
+               AVG(avg_running) as running,
+               AVG(avg_queued_load) as queued,
+               AVG(avg_blocked) as blocked
+        FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_LOAD_HISTORY
+        WHERE warehouse_name = '<warehouse>'
+          AND start_time > DATEADD(hour, -6, CURRENT_TIMESTAMP())
+        ORDER BY start_time;
+      RESOLUTION OPTIONS:
+        1. Move ML/Metaflow workloads to a dedicated warehouse
+        2. Increase max_clusters on the multi-cluster warehouse
+        3. Stagger dbt and ML schedules to avoid overlap
+        4. Set resource monitors or query timeouts for non-critical workloads
+
+    - |
+      PATTERN: Warehouse Contention — On-Demand vs Scheduled Conflict
+      SYMPTOMS: Scheduled dbt run times out because an analyst is running
+      a large ad-hoc query on the same warehouse.
+      DIAGNOSTIC SQL:
+        SELECT query_id, user_name, query_text, total_elapsed_time/1000 as sec,
+               warehouse_name, start_time
+        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+        WHERE warehouse_name = '<warehouse>'
+          AND start_time BETWEEN '<failure_time - 30min>' AND '<failure_time>'
+          AND total_elapsed_time > 120000  -- > 2 min
+          AND user_name NOT IN ('<dbt_service_account>', 'SYSTEM')
+        ORDER BY start_time;
+      RESOLUTION: Educate analysts to use the ANALYST warehouse for ad-hoc
+      queries. Consider separate warehouses for interactive vs batch workloads.
+
+    # --- Resource Failures ---
+    - |
+      PATTERN: Disk Space / Storage Limit
+      SYMPTOMS: Model fails with storage-related error. Rare in Snowflake
+      but can happen with large CTAS operations or transient stages.
+      DIAGNOSTIC SQL:
+        SELECT table_catalog, table_schema, table_name,
+               bytes / (1024*1024*1024) as gb_size,
+               row_count
+        FROM <db>.INFORMATION_SCHEMA.TABLES
+        WHERE table_schema = '<schema>'
+        ORDER BY bytes DESC NULLS LAST LIMIT 20;
+      RESOLUTION: Check for orphaned temporary tables or stages. Clean up
+      old artifacts. If storage is legitimately growing, plan for it.
+
+    # --- Decision Tree ---
+    - |
+      DECISION TREE: Infrastructure Error Triage
+      1. Is error code 300005 or 300010, or message contains "internal error"?
+         YES -> Check if next run succeeded. If yes, transient — close.
+                If no, file Snowflake support ticket.
+         NO  -> Continue.
+      2. Is the error a timeout?
+         YES -> Check warehouse load history for contention.
+                If high queue depth -> Contention pattern.
+                If normal load -> Query optimization or warehouse resize needed.
+         NO  -> Continue.
+      3. Is the error a resource limit (memory, disk)?
+         YES -> Check query profile for memory spills to disk.
+                Increase warehouse size or optimize the query.
+         NO  -> Escalate to DE team with full error details.
+
+    # --- General Rules ---
+    - "For any infrastructure error: always check if the next scheduled run succeeded before investigating — 40%+ of infrastructure alerts are transient"
+    - "Never increase warehouse size as a first response — always check for query optimization opportunities first"
+    - "Document the query_id in the alert thread — it is essential for Snowflake support tickets and post-mortems"
