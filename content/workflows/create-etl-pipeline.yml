@@ -866,3 +866,175 @@ workflow:
         max_tokens: 8000
       transitions:
         - default: show_results
+
+    # Step 10: Checkpoint 2 — Show full results for approval
+    - id: show_results
+      mode: execute
+      type: delegate
+      delegate: shift.show_plan
+      requires_approval: true
+      context:
+        dynamic:
+          - from: generate_models
+          - from: validate_pipeline
+          - from: recommend_tests
+          - from: design_pipeline
+            select: dag_recommendation
+      output_schema:
+        type: object
+        required: [user_decision]
+        properties:
+          user_decision:
+            type: string
+            enum: [approve, edit]
+          edit_request:
+            type: string
+          edit_count:
+            type: integer
+      transitions:
+        - when: "output.user_decision == 'edit'"
+          goto: apply_changes
+        - default: create_pr
+
+    # Step 11: Apply user-requested edits to generated models
+    - id: apply_changes
+      mode: reason
+      instruction: |
+        Apply the user's requested changes to the generated models.
+
+        The user may ask to:
+        - Rename a model or column
+        - Change materialization strategy
+        - Add or remove a CTE block
+        - Modify join logic or filters
+        - Change incremental strategy or unique key
+        - Adjust test recommendations
+
+        Read the edit_request from show_results, identify which model(s)
+        are affected, and regenerate the SQL/schema artifacts.
+        Re-validate the changed models to ensure they still compile.
+
+        Track edit_count to prevent infinite loops — the Shift driver
+        will enforce a maximum number of edit cycles.
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Re-validate corrected SQL against Snowflake"
+        - name: github_cli.read_file
+          instruction: "Re-read reference patterns if needed for edits"
+      context:
+        static: []
+        dynamic:
+          - from: show_results
+            select: [edit_request, edit_count]
+          - from: generate_models
+          - from: validate_pipeline
+          - from: discover_reference_patterns
+            select: reference_examples
+      output_schema:
+        type: object
+        required: [updated_models, validation_passed]
+        properties:
+          updated_models:
+            type: array
+            items:
+              type: object
+              required: [model_name, sql_content, schema_yml_content, file_path]
+          validation_passed:
+            type: boolean
+      budget:
+        max_llm_turns: 5
+        max_tokens: 10000
+      transitions:
+        - default: show_results
+
+    # Step 12: Create PR with all generated artifacts
+    - id: create_pr
+      mode: execute
+      type: delegate
+      delegate: shift.create_pr
+      requires_approval: true
+      context:
+        dynamic:
+          - from: generate_models
+          - from: recommend_tests
+          - from: design_pipeline
+          - from: validate_pipeline
+            select: sample_output
+          - from: profile_source_data
+      output_schema:
+        type: object
+        required: [pr_url, branch_name, files_created]
+        properties:
+          pr_url:
+            type: string
+          branch_name:
+            type: string
+          files_created:
+            type: array
+            items:
+              type: string
+
+    # Step 13: Recommend orchestration (DAG, schedule, monitoring)
+    - id: recommend_orchestration
+      mode: reason
+      instruction: |
+        Recommend how to orchestrate the new pipeline in Airflow/Cosmos.
+
+        Based on the pipeline design and generated models:
+        1. Identify the best existing DAG to add the models to, or
+           recommend creating a new DAG if the domain/schedule doesn't
+           match any existing DAG
+        2. Recommend a schedule based on source freshness from profiling
+           and the reference pipeline's schedule (from DBT_INVOCATIONS)
+        3. Generate a dbt selector that matches the new models
+           (by tag, path, or model name)
+        4. Recommend tags for the new models (domain, frequency, tier)
+        5. Identify downstream models that may need to be aware of
+           the new pipeline (from DBT_MODEL_TABLE_LINEAGE)
+        6. Recommend monitoring: freshness checks, row count alerts,
+           SLA based on expected runtime
+
+        Query DBT_INVOCATIONS for existing DAG patterns:
+        SELECT DISTINCT job_name, schedule, selector
+        FROM DW.DATAOPS_DBT.DBT_INVOCATIONS
+        WHERE job_name ILIKE '%{domain}%'
+        ORDER BY job_name
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query DBT_INVOCATIONS for DAG patterns and schedules"
+      context:
+        static: []
+        dynamic:
+          - from: design_pipeline
+            select: dag_recommendation
+          - from: generate_models
+      output_schema:
+        type: object
+        required: [dag_name, schedule, selector_match, tags, downstream_impact, monitoring_recommendation]
+        properties:
+          dag_name:
+            type: string
+          schedule:
+            type: string
+          selector_match:
+            type: string
+          tags:
+            type: array
+            items:
+              type: string
+          downstream_impact:
+            type: array
+            items:
+              type: string
+          monitoring_recommendation:
+            type: object
+            properties:
+              freshness_check:
+                type: string
+              row_count_alert:
+                type: string
+              sla_minutes:
+                type: integer
+      budget:
+        max_llm_turns: 3
+        max_tokens: 5000

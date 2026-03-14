@@ -61,3 +61,10 @@ workflows:
     triggers:
       keywords: [triage alert, on-call, alert triage, investigate failure, debug alert, ae alert, triage]
       input_pattern: "triage {alert_text}"
+
+  - id: create-etl-pipeline
+    name: Create ETL Pipeline
+    persona: data_engineer
+    triggers:
+      keywords: [create pipeline, build pipeline, new pipeline, etl pipeline, productionize sql, new source, similar to, like this but for]
+      input_pattern: "{request_text}"
