@@ -1,13 +1,25 @@
 # Create ETL Pipeline — Design Spec
 
-**Date:** 2026-03-13
-**Status:** Approved
+**Date:** 2026-03-13 (updated 2026-03-14)
+**Status:** Validated — live tested via Shift 2026-03-14
 **Workflow:** `create-etl-pipeline`
 **Persona:** `data_engineer`
+**Model:** Guardrails (context assembly + freestyle build + mandatory validation)
 
 ## Summary
 
-A single DCAG workflow that takes a one-sentence request from a data practitioner and builds a complete, validated ETL pipeline — from source discovery through PR creation. The user interacts at 3 checkpoints; everything else is autonomous.
+A DCAG workflow that takes a one-sentence request and builds a complete, validated ETL pipeline. Uses the **guardrails model**: DCAG gathers context and validates output, but the LLM reasons freely for the creative parts (architecture, SQL, tests).
+
+**Validated 2026-03-14** via live Shift test (Apple Search Ads KEYWORD_REPORT). Three-way comparison showed guardrails model outperformed both pure freestyle (missed validation) and full orchestration (constrained reasoning). See `memory/project_dcag_guardrails_validation.md` for results.
+
+### Guardrails Philosophy
+
+| Phase | Who Drives | What Happens |
+|-------|-----------|--------------|
+| Context Assembly | DCAG orchestrates | Profile source, trace reference, read real SQL from repo |
+| Freestyle Build | LLM reasons freely | One step with ALL context — decides architecture, SQL, tests |
+| Validation | DCAG enforces | 16 mandatory quality checks via dbt MCP + Snowflake |
+| Delivery | DCAG orchestrates | Approval gate, PR, orchestration recommendation |
 
 ## Motivation
 
