@@ -38,10 +38,12 @@ class ContextAssembler:
             if isinstance(ref, dict):
                 step_id = ref["from"]
                 if step_id not in prior_outputs:
-                    raise KeyError(
-                        f"Dynamic ref '{step_id}' not in prior outputs. "
+                    # Skip refs from steps that didn't execute (e.g. conditional branches)
+                    logger.debug(
+                        f"Dynamic ref '{step_id}' not in prior outputs (branch not taken), skipping. "
                         f"Available: {list(prior_outputs.keys())}"
                     )
+                    continue
                 output = prior_outputs[step_id]
                 if "select" in ref:
                     sel = ref["select"]
@@ -59,7 +61,8 @@ class ContextAssembler:
                     result[step_id] = output
             elif isinstance(ref, str):
                 if ref not in prior_outputs:
-                    raise KeyError(f"Dynamic ref '{ref}' not in prior outputs")
+                    logger.debug(f"Dynamic ref '{ref}' not in prior outputs (branch not taken), skipping")
+                    continue
                 result[ref] = prior_outputs[ref]
         return result
 
