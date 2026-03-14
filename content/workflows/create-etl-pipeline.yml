@@ -21,6 +21,11 @@ workflow:
       required: false
 
   steps:
+    # ═══════════════════════════════════════════════════════════
+    # PHASE 1: Context Assembly (DCAG orchestrates)
+    # Gather everything the LLM needs to freestyle intelligently.
+    # ═══════════════════════════════════════════════════════════
+
     # Step 0: Validate tool availability
     - id: setup_environment
       mode: reason
@@ -50,12 +55,11 @@ workflow:
         max_llm_turns: 3
         max_tokens: 4000
 
-    # Step 1: Classify user intent into entry point
+    # Step 1: Classify intent to route discovery
     - id: classify_intent
       mode: reason
       instruction: |
-        Parse the user's request to determine the entry point for pipeline creation.
-        Extract structured fields from the natural language request:
+        Parse the user's request to determine which discovery path to take.
 
         ENTRY POINTS:
         - new_source: User names a specific source table to build a pipeline for.
@@ -112,33 +116,15 @@ workflow:
       instruction: |
         Discover the source table(s) mentioned in the user's request.
 
-        1. Query INFORMATION_SCHEMA.COLUMNS for the source table schema
-           (column names, types, nullability, ordinal position)
-        2. Query DW.DATAOPS_DBT.DBT_MODELS to check if staging models
-           already exist for this source (WHERE depends_on_nodes ILIKE '%{source}%')
-        3. Query DW.DATAOPS_DBT.DBT_MODEL_TABLE_LINEAGE to find similar
-           pipelines in the same schema/domain (WHERE root_table_name ILIKE '%{domain}%' LIMIT 5)
-        4. Query DW.DATAOPS_DBT.DBT_MODELS for naming and materialization
-           conventions used by existing models in the target schema
-
-        Output all findings in the common discovery format.
+        1. Query INFORMATION_SCHEMA.COLUMNS for full column metadata
+        2. Query DW.DATAOPS_DBT.DBT_MODELS to check if staging models exist
+        3. Query DW.DATAOPS_DBT.DBT_MODEL_TABLE_LINEAGE for similar pipelines
+        4. Check for the SAME source in other brands/schemas
+           (e.g., APPLE_SEARCH_ADS and APPLE_SEARCH_ADS_VIAGOGO)
+        5. Query DW.DATAOPS_DBT.DBT_MODELS for naming/materialization conventions
       tools:
         - name: snowflake_mcp.execute_query
           instruction: "Query INFORMATION_SCHEMA, DBT_MODELS, and DBT_MODEL_TABLE_LINEAGE"
-          usage_pattern: |
-            1. SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, ORDINAL_POSITION
-               FROM {db}.INFORMATION_SCHEMA.COLUMNS
-               WHERE TABLE_SCHEMA = '{schema}' AND TABLE_NAME = '{table}'
-            2. SELECT name, schema_name, materialization, depends_on_nodes, original_path
-               FROM DW.DATAOPS_DBT.DBT_MODELS
-               WHERE depends_on_nodes ILIKE '%{source_table}%'
-            3. SELECT DISTINCT root_table_name, level, node
-               FROM DW.DATAOPS_DBT.DBT_MODEL_TABLE_LINEAGE
-               WHERE root_table_name ILIKE '%{domain}%' AND level <= 4
-               LIMIT 50
-            4. SELECT name, materialization, tags, original_path
-               FROM DW.DATAOPS_DBT.DBT_MODELS
-               WHERE schema_name = '{target_schema}' LIMIT 20
         - name: snowflake_mcp.describe_table
           instruction: "Get detailed column metadata for the source table"
       context:
@@ -148,7 +134,7 @@ workflow:
             select: [source_hints, domain_hint]
       output_schema:
         type: object
-        required: [source_tables, existing_models, reference_pipeline, conventions]
+        required: [source_tables, existing_models, similar_pipelines, conventions]
         properties:
           source_tables:
             type: array
@@ -157,8 +143,8 @@ workflow:
               required: [table_fqn, columns]
           existing_models:
             type: array
-          reference_pipeline:
-            type: object
+          similar_pipelines:
+            type: array
           conventions:
             type: object
       budget:
@@ -171,31 +157,18 @@ workflow:
     - id: trace_reference_pipeline
       mode: reason
       instruction: |
-        Trace the full lineage of the reference model to understand the
-        pipeline structure the user wants to replicate.
+        Trace the full lineage of the reference model the user wants to replicate.
 
-        1. Find the reference model in DBT_MODELS to get its unique_id,
-           schema, materialization, depends_on_nodes, and original_path
-        2. Trace its FULL recursive lineage via DBT_MODEL_TABLE_LINEAGE:
-           query WHERE root_table_name matches the model's table FQN,
-           get all levels (depth) and node names
-        3. For each model in the lineage, get details from DBT_MODELS:
-           materialization, tags, depends_on_nodes
-        4. Get test patterns from DBT_TESTS for models in the lineage:
-           parent_model_unique_id, short_name, test_column_name
-        5. Identify what new source the user wants to use (from source_hints)
-
-        This gives us the complete template to replicate.
+        1. Find the reference model in DBT_MODELS (unique_id, schema, materialization,
+           depends_on_nodes, original_path)
+        2. Trace FULL recursive lineage via DBT_MODEL_TABLE_LINEAGE
+        3. For each model in the lineage, get: materialization, tags, depends_on_nodes
+        4. Get test patterns from DBT_TESTS for models in the lineage
+        5. Identify the new source the user wants (from source_hints)
+        6. Check if the new source exists for multiple brands/schemas
       tools:
         - name: snowflake_mcp.execute_query
           instruction: "Query DBT_MODELS, DBT_MODEL_TABLE_LINEAGE, and DBT_TESTS"
-          usage_pattern: |
-            1. SELECT * FROM DW.DATAOPS_DBT.DBT_MODELS WHERE name = '{reference_model}'
-            2. SELECT level, node, lineage_path FROM DW.DATAOPS_DBT.DBT_MODEL_TABLE_LINEAGE
-               WHERE root_table_name ILIKE '%{reference_table}%' ORDER BY level
-            3. SELECT parent_model_unique_id, short_name, test_column_name, severity
-               FROM DW.DATAOPS_DBT.DBT_TESTS
-               WHERE parent_model_unique_id ILIKE '%{model}%'
       context:
         static: [snowflake_environment]
         dynamic:
@@ -203,7 +176,7 @@ workflow:
             select: [reference_model_hint, source_hints, domain_hint]
       output_schema:
         type: object
-        required: [source_tables, existing_models, reference_pipeline, conventions]
+        required: [source_tables, existing_models, similar_pipelines, conventions]
         properties:
           source_tables:
             type: array
@@ -212,17 +185,8 @@ workflow:
               required: [table_fqn, columns]
           existing_models:
             type: array
-          reference_pipeline:
-            type: object
-            properties:
-              root_model:
-                type: string
-              layers:
-                type: array
-              materializations:
-                type: array
-              tests:
-                type: array
+          similar_pipelines:
+            type: array
           conventions:
             type: object
       budget:
@@ -235,21 +199,17 @@ workflow:
     - id: parse_sql_sources
       mode: reason
       instruction: |
-        Parse the user's SQL to identify source tables and plan the pipeline.
+        Parse the user's SQL to identify source tables and existing dbt models.
 
         1. Extract all FROM and JOIN table references from the SQL
         2. For each referenced table, check if a dbt model exists in DBT_MODELS
-           (query WHERE name ILIKE '%{table}%' or depends_on_nodes references it)
-        3. For tables without dbt models, query INFORMATION_SCHEMA to get their
-           schema (these will need new staging models)
-        4. Identify CTE structure in the SQL — map each CTE to a potential
-           pipeline layer (staging, intermediate, final)
-        5. Check domain conventions for models that DO exist
-
-        The goal is to decompose the user's ad-hoc SQL into proper dbt layers.
+        3. For tables without dbt models, query INFORMATION_SCHEMA for their schema
+        4. Identify CTE structure — these hint at natural layer boundaries
+        5. Flag hardcoded dates, missing filters, or other issues to address
+        6. Check domain conventions for existing models
       tools:
         - name: snowflake_mcp.execute_query
-          instruction: "Query DBT_MODELS and INFORMATION_SCHEMA for source table metadata"
+          instruction: "Query DBT_MODELS and INFORMATION_SCHEMA"
         - name: snowflake_mcp.describe_table
           instruction: "Describe tables that don't have dbt models yet"
       context:
@@ -259,7 +219,7 @@ workflow:
             select: [sql_text, source_hints, domain_hint]
       output_schema:
         type: object
-        required: [source_tables, existing_models, reference_pipeline, conventions]
+        required: [source_tables, existing_models, similar_pipelines, conventions]
         properties:
           source_tables:
             type: array
@@ -268,8 +228,8 @@ workflow:
               required: [table_fqn, columns]
           existing_models:
             type: array
-          reference_pipeline:
-            type: object
+          similar_pipelines:
+            type: array
           conventions:
             type: object
       budget:
@@ -278,28 +238,26 @@ workflow:
       transitions:
         - default: profile_source_data
 
-    # Step 2d: Analyze target pipeline for extension (for extend_existing)
+    # Step 2d: Analyze target pipeline (for extend_existing)
     - id: analyze_target_pipeline
       mode: reason
       instruction: |
-        Analyze the existing pipeline that the user wants to extend with
-        a new source or channel.
+        Analyze the existing pipeline the user wants to extend.
 
-        1. Find the target model in DBT_MODELS and get its full metadata
+        1. Find the target model in DBT_MODELS
         2. Read the target model's SQL from GitHub to understand its structure
            (UNION ALL blocks, CTEs, JOIN patterns)
            DEGRADED MODE: If GitHub unavailable, use compiled_code from
-           DBT_RUN_RESULTS instead (loses Jinja but shows resolved SQL)
-        3. Trace its lineage via DBT_MODEL_TABLE_LINEAGE to understand
-           the full pipeline structure
-        4. Get test patterns from DBT_TESTS to replicate for the new source
-        5. Identify where the new source fits: new CTE in UNION ALL,
-           new JOIN, new intermediate model, etc.
+           DBT_RUN_RESULTS instead
+        3. Trace its lineage via DBT_MODEL_TABLE_LINEAGE
+        4. Get test patterns from DBT_TESTS
+        5. Identify where the new source fits in the existing structure
+        6. Check if the new source exists for multiple brands
       tools:
         - name: snowflake_mcp.execute_query
           instruction: "Query DBT_MODELS, DBT_MODEL_TABLE_LINEAGE, DBT_TESTS, DBT_RUN_RESULTS"
         - name: github_cli.read_file
-          instruction: "Read the target model SQL file from the Astronomer repo"
+          instruction: "Read the target model SQL from the Astronomer repo"
       context:
         static: [snowflake_environment]
         dynamic:
@@ -309,7 +267,7 @@ workflow:
             select: [reference_model_hint, source_hints, domain_hint]
       output_schema:
         type: object
-        required: [source_tables, existing_models, reference_pipeline, conventions]
+        required: [source_tables, existing_models, similar_pipelines, conventions]
         properties:
           source_tables:
             type: array
@@ -318,8 +276,8 @@ workflow:
               required: [table_fqn, columns]
           existing_models:
             type: array
-          reference_pipeline:
-            type: object
+          similar_pipelines:
+            type: array
           conventions:
             type: object
       budget:
@@ -328,35 +286,30 @@ workflow:
       transitions:
         - default: profile_source_data
 
-    # Step 3: Profile source data for all identified tables
+    # Step 3: Profile source data (MANDATORY — always runs)
     - id: profile_source_data
       mode: reason
       instruction: |
-        Profile every source table identified in the discovery phase.
-        For each table, run these 6 checks:
+        Profile EVERY source table identified in discovery. This step is
+        mandatory — it ensures we have hard data before any design decisions.
 
-        1. SHAPE: SELECT COUNT(*) as rows, MIN(date_col), MAX(date_col)
-        2. PK CANDIDATES: For columns likely to be keys (*_id, *_key),
-           SELECT column, COUNT(DISTINCT column), COUNT(*) to check uniqueness
-        3. NULL RATES: For each column,
-           SUM(CASE WHEN col IS NULL THEN 1 END)::FLOAT / COUNT(*) as null_pct
-           Flag columns with >5% nulls
-        4. DAILY VOLUME: GROUP BY DATE_TRUNC('day', date_col) for last 7 days
-           to determine if hourly or daily materialization is needed
-        5. FRESHNESS: SELECT MAX(loaded_at_col),
-           DATEDIFF('hour', MAX(loaded_at_col), CURRENT_TIMESTAMP()) as hours_stale
-        6. DUPLICATES: SELECT pk_candidates, COUNT(*) HAVING COUNT(*) > 1 LIMIT 5
+        For each source table, run these 6 checks:
+        1. SHAPE: row count, column count, date range (MIN/MAX of date columns)
+        2. PK CANDIDATES: for *_id and *_key columns, check cardinality vs row count
+        3. NULL RATES: per column, flag any with >5% nulls
+        4. DAILY VOLUME: rows per day over last 7 days (determines materialization)
+        5. FRESHNESS: hours since last data (MAX of timestamp/synced columns)
+        6. DUPLICATES: check candidate PKs for dupes
 
-        Generate warnings for: stale sources (>48h), high nulls (>5% on non-nullable),
-        no PK candidate, duplicates on candidate PK, low volume (<100 rows/day).
+        Also check: does this source exist in MULTIPLE schemas/brands?
+        (e.g., APPLE_SEARCH_ADS and APPLE_SEARCH_ADS_VIAGOGO)
+        If yes, include ALL brand variants in the profile.
+
+        Generate warnings for: stale sources (>48h), high nulls (>5%),
+        no PK candidate, duplicates, low volume (<100 rows/day).
       tools:
         - name: snowflake_mcp.execute_query
           instruction: "Run profiling queries against each source table"
-          usage_pattern: |
-            For each source table:
-            1. SELECT COUNT(*) as row_count FROM {table_fqn}
-            2. SELECT {pk_col}, COUNT(*) as cnt FROM {table_fqn} GROUP BY 1 HAVING cnt > 1 LIMIT 5
-            3. SELECT column_name, SUM(CASE WHEN col IS NULL THEN 1 END)::FLOAT/COUNT(*) FROM {table}
       context:
         static: []
         dynamic:
@@ -370,7 +323,7 @@ workflow:
             select: source_tables
       output_schema:
         type: object
-        required: [profiles, warnings]
+        required: [profiles, warnings, multi_brand_sources]
         properties:
           profiles:
             type: array
@@ -382,73 +335,74 @@ workflow:
             items:
               type: object
               required: [table_fqn, warning_type, detail]
+          multi_brand_sources:
+            type: array
+            items:
+              type: object
               properties:
-                warning_type:
+                base_source:
                   type: string
-                  enum: [stale_source, high_nulls, no_pk_candidate, duplicates_detected, low_volume]
+                brand_variants:
+                  type: array
       budget:
-        max_llm_turns: 6
-        max_tokens: 10000
+        max_llm_turns: 8
+        max_tokens: 12000
       transitions:
-        - default: discover_reference_patterns
+        - default: gather_reference_context
 
-    # Step 4: Read real SQL from Astronomer repo as generation templates
-    - id: discover_reference_patterns
+    # Step 4: Read real SQL from the repo as context (not templates)
+    - id: gather_reference_context
       mode: reason
       instruction: |
-        Read REAL SQL from the Astronomer repo to use as templates for
-        generating the new pipeline. Do NOT invent patterns — always
-        base generation on actual production code.
+        Read REAL SQL from the Astronomer repo to provide as context for
+        the freestyle generation step. The goal is NOT to create templates —
+        it's to show the LLM what good pipelines look like in this codebase.
 
-        1. From the discovery step, identify the reference pipeline
-           (explicit from user, or best match from same domain)
+        1. Identify the best reference pipeline (explicit from user, or
+           best match from same domain found in discovery)
         2. For each model in the reference pipeline's lineage:
            - Read the raw model SQL from GitHub (Jinja, ref(), config block)
-           - Read its schema.yml (tests, descriptions)
+           - Read its schema.yml (tests, descriptions, meta)
            DEGRADED MODE: If GitHub unavailable, query DBT_RUN_RESULTS
-           for compiled_code (resolved SQL without Jinja)
-        3. If no explicit reference: find 2-3 models in the same domain
-           from DBT_MODELS, read their SQL for pattern extraction
-        4. Extract: config blocks, CTE structure, naming patterns,
-           materialization choices, incremental strategies
+           for compiled_code instead
+        3. If no explicit reference: find 2-3 models in the same domain,
+           read their SQL to show coding patterns
+        4. Extract and note: config blocks, CTE naming, column conventions,
+           test patterns, materialization choices, tag conventions
 
-        This step ensures generate_models has REAL examples to follow,
-        not hallucinated patterns.
+        This context will be provided to the build step so it can follow
+        real patterns, not invented ones.
       tools:
         - name: github_cli.read_file
           instruction: "Read model SQL and schema.yml files from the Astronomer repo"
         - name: github_cli.search_code
-          instruction: "Search for config blocks and patterns in the domain directory"
+          instruction: "Search for patterns in the domain directory"
         - name: snowflake_mcp.execute_query
           instruction: "DEGRADED MODE: Get compiled_code from DBT_RUN_RESULTS if GitHub unavailable"
-          usage_pattern: |
-            SELECT compiled_code FROM DW.DATAOPS_DBT.DBT_RUN_RESULTS
-            WHERE unique_id ILIKE '%{model}%' AND status = 'success'
-            ORDER BY execution_time DESC LIMIT 1
       context:
         static: []
         dynamic:
           - from: setup_environment
             select: github_available
           - from: classify_intent
-            select: [reference_model_hint, domain_hint]
+            select: [entry_point, reference_model_hint, domain_hint]
           - from: discover_source_schema
-            select: [reference_pipeline, conventions]
+            select: [similar_pipelines, conventions]
           - from: trace_reference_pipeline
-            select: [reference_pipeline, conventions]
+            select: [similar_pipelines, conventions]
           - from: parse_sql_sources
-            select: [reference_pipeline, conventions]
+            select: [similar_pipelines, conventions]
           - from: analyze_target_pipeline
-            select: [reference_pipeline, conventions]
+            select: [similar_pipelines, conventions]
       output_schema:
         type: object
-        required: [reference_examples]
+        required: [reference_sql_files, domain_conventions]
         properties:
-          reference_examples:
+          reference_sql_files:
             type: array
             items:
               type: object
-              required: [model_name, layer, raw_sql, config_block, original_path]
+              required: [model_name, layer, raw_sql, original_path]
               properties:
                 model_name:
                   type: string
@@ -481,93 +435,133 @@ workflow:
         max_llm_turns: 8
         max_tokens: 15000
       transitions:
-        - default: design_pipeline
+        - default: build_pipeline
 
-    # Step 5: Design the pipeline architecture
-    - id: design_pipeline
+    # ═══════════════════════════════════════════════════════════
+    # PHASE 2: Freestyle Generation (LLM reasons holistically)
+    # One step. All context. Full creative freedom.
+    # ═══════════════════════════════════════════════════════════
+
+    # Step 5: Build the complete pipeline — architecture + SQL + tests
+    - id: build_pipeline
       mode: reason
       instruction: |
-        Based on ALL discovery, profiling, and reference pattern data,
-        design the complete pipeline architecture.
+        You have FULL CONTEXT about:
+        - The source data (profiling results, column metadata, multi-brand variants)
+        - The reference pipeline (real SQL from the repo, test patterns, conventions)
+        - The domain conventions (naming, materialization, config blocks, directory structure)
+        - The user's request and intent
 
-        DECISIONS TO MAKE:
-        1. Pipeline pattern: hourly_rollup, scd_star, multi_source_union,
-           cdc_staging, or standard — based on reference and source characteristics
-        2. Number of layers: source → staging → intermediate? → fact/mart
-        3. Model names: follow domain naming conventions from reference examples
-        4. Materialization per layer: based on daily volume from profiling
-           and reference pipeline's config blocks
-        5. Incremental strategy: based on PK candidates from profiling
-           and reference config blocks (merge, delete+insert, append)
-        6. Schema placement: match existing models in the domain
-        7. DAG and tags: query DBT_INVOCATIONS for job_name patterns
+        NOW: Design and build a complete ETL pipeline. You decide the architecture,
+        the number of layers, the materializations, and the SQL. Use your judgment.
+        Look at the reference SQL and follow its patterns, but improve where needed.
 
-        OUTPUT: A list of models to create, each with name, layer,
-        materialization, dependencies, and config. Mark models that
-        already exist (is_new: false) so they are skipped in generation.
+        PRODUCE ALL OF THESE ARTIFACTS:
 
-        For extend_existing: output only the delta — new models to add
-        plus the existing model to modify.
-      tools: []
+        1. PIPELINE DESIGN — explain your architecture choices:
+           - Pattern chosen and why (hourly_rollup, multi_source_union, cdc_staging, etc.)
+           - Layers and models (name, materialization, purpose)
+           - What already exists vs what's new vs what's modified
+
+        2. MODEL SQL FILES — for each model:
+           - Complete SQL with Jinja ({{ config() }}, {{ ref() }}, {{ source() }})
+           - Config block matching domain conventions from reference examples
+           - Labeled CTE blocks for readability ([SOURCE], [RENAME], [ENRICH], [FINAL])
+           - If source exists for multiple brands: UNION them in staging
+           - If source has columns needing rename/cast/coerce: create a staging layer
+           - If the request is extend_existing: output the COMPLETE modified file, not a diff
+           - Add derived metrics where they add business value (efficiency ratios, rates)
+           - Skip deprecated or irrelevant columns (explain why in comments)
+
+        3. SCHEMA.YML — for each model:
+           - Column descriptions (infer from names + reference descriptions)
+           - Primary key marked in meta
+           - Tests: unique + not_null on PK at minimum
+           - Additional tests based on column types and reference patterns
+           - Business-relevant tests (spend bounds, row count checks) from reference
+
+        4. SOURCES.YML — for new sources:
+           - Database, schema, table identifier
+           - loaded_at_field from profiling
+           - Freshness thresholds (warn/error) matching domain conventions
+
+        5. DAG RECOMMENDATION:
+           - Which existing DAG these models belong in
+           - Tags to set in config block
+           - Whether a new DAG is needed (rare)
+
+        QUALITY STANDARDS:
+        - Follow the reference SQL patterns exactly for config blocks, Jinja macros, warehouse selection
+        - Use {{ ref() }} and {{ source() }} everywhere — never hardcoded table names
+        - Explicit column lists (no SELECT *)
+        - COALESCE nulls on numeric columns where the reference does
+        - If the user's SQL has hardcoded dates, replace with incremental logic
+        - If profiling found issues (high nulls, duplicates), handle them in staging
+      tools:
+        - name: snowflake_mcp.execute_query
+          instruction: "Query Snowflake if you need additional metadata during generation"
+        - name: github_cli.read_file
+          instruction: "Read additional files from the repo if needed"
+        - name: dbt_mcp.compile
+          instruction: "Compile a dbt model to validate SQL + Jinja syntax without executing"
+        - name: dbt_mcp.show
+          instruction: "Preview output rows for a model to verify it produces expected data"
+        - name: dbt_mcp.get_lineage
+          instruction: "Verify the new models integrate correctly into existing lineage"
       context:
-        static: [naming_conventions, load_frequency_heuristics, dbt_project_structure]
+        static: [naming_conventions, testing_standards, load_frequency_heuristics, dbt_project_structure]
         dynamic:
           - from: classify_intent
-            select: [entry_point, source_hints, domain_hint]
-          - from: discover_source_schema
-            select: [source_tables, existing_models, reference_pipeline, conventions]
-          - from: trace_reference_pipeline
-            select: [source_tables, existing_models, reference_pipeline, conventions]
-          - from: parse_sql_sources
-            select: [source_tables, existing_models, reference_pipeline, conventions]
-          - from: analyze_target_pipeline
-            select: [source_tables, existing_models, reference_pipeline, conventions]
           - from: profile_source_data
-            select: [profiles, warnings]
-          - from: discover_reference_patterns
-            select: [reference_examples, domain_conventions]
+          - from: gather_reference_context
+          - from: discover_source_schema
+            select: [source_tables, existing_models, conventions]
+          - from: trace_reference_pipeline
+            select: [source_tables, existing_models, conventions]
+          - from: parse_sql_sources
+            select: [source_tables, existing_models, conventions]
+          - from: analyze_target_pipeline
+            select: [source_tables, existing_models, conventions]
       output_schema:
         type: object
-        required: [pipeline_pattern, models, dag_recommendation]
+        required: [design, models, dag_recommendation]
         properties:
-          pipeline_pattern:
-            type: string
-            enum: [hourly_rollup, scd_star, multi_source_union, cdc_staging, standard]
+          design:
+            type: object
+            required: [pattern, rationale, layers]
+            properties:
+              pattern:
+                type: string
+              rationale:
+                type: string
+              layers:
+                type: array
           models:
             type: array
             items:
               type: object
-              required: [name, layer, materialization, depends_on, schema, is_new]
+              required: [name, layer, materialization, sql_content, schema_yml_content, file_path]
               properties:
                 name:
                   type: string
                 layer:
                   type: string
-                  enum: [source, staging, intermediate, dimension, fact, mart, rpt]
                 materialization:
                   type: string
-                  enum: [incremental, table, view, dynamic_table, ephemeral]
-                depends_on:
-                  type: array
-                  items:
-                    type: string
-                schema:
+                sql_content:
+                  type: string
+                schema_yml_content:
+                  type: string
+                sources_yml_content:
+                  type: string
+                file_path:
+                  type: string
+                schema_yml_path:
                   type: string
                 is_new:
                   type: boolean
-                incremental_config:
-                  type: object
-                  properties:
-                    unique_key:
-                      type: string
-                    strategy:
-                      type: string
-                    on_schema_change:
-                      type: string
-                    lookback:
-                      type: string
-                description:
-                  type: string
+                is_modification:
+                  type: boolean
           dag_recommendation:
             type: object
             properties:
@@ -579,168 +573,93 @@ workflow:
                 type: string
               needs_new_dag:
                 type: boolean
-          skipped_models:
-            type: array
       budget:
-        max_llm_turns: 3
-        max_tokens: 8000
-      transitions:
-        - default: confirm_plan
+        max_llm_turns: 10
+        max_tokens: 25000
 
-    # Step 6: Checkpoint 1 — Show plan to user for approval
-    - id: confirm_plan
-      mode: execute
-      type: delegate
-      delegate: shift.show_plan
-      requires_approval: true
-      context:
-        dynamic:
-          - from: profile_source_data
-            select: [profiles, warnings]
-          - from: design_pipeline
-      output_schema:
-        type: object
-        required: [user_decision]
-        properties:
-          user_decision:
-            type: string
-            enum: [approve, revise]
-          feedback:
-            type: string
-      transitions:
-        - when: "output.user_decision == 'revise'"
-          goto: design_pipeline
-        - default: generate_models
+    # ═══════════════════════════════════════════════════════════
+    # PHASE 3: Validation (DCAG enforces quality gates)
+    # Check that the freestyle output meets mandatory requirements.
+    # ═══════════════════════════════════════════════════════════
 
-    # Step 7: Generate model SQL, schema.yml, sources.yml for each model
-    - id: generate_models
-      mode: reason
-      loop:
-        over: design_pipeline.models
-        as: current_model
-      instruction: |
-        Generate all artifacts for {{current_model.name}}.
-
-        Use the reference examples from discover_reference_patterns as your
-        TEMPLATE. Do not invent patterns — adapt the reference SQL to the
-        new source and requirements.
-
-        GENERATE 3 ARTIFACTS:
-
-        1. MODEL SQL FILE — structured with labeled CTE blocks:
-           -- [SOURCE] Raw data pull with incremental filter
-           -- [RENAME] Column standardization and type casting
-           -- [DEDUP] Deduplication if profiling found duplicates
-           -- [ENRICH] Joins to dimension/lookup tables (if needed)
-           -- [FINAL] Final SELECT with surrogate key generation
-
-           Config block: copy from reference example, adapt unique_key
-           and materialization for this model.
-
-           For is_modification=true (extend_existing): output the COMPLETE
-           modified file, not a diff. Read the existing file first.
-
-        2. SCHEMA.YML ENTRY — column names, types from source profiling,
-           descriptions inferred from column names + reference descriptions.
-           Mark primary key columns.
-
-        3. SOURCES.YML ENTRY (only for staging models with new sources) —
-           source_name, table identifier, loaded_at_field from profiling.
-
-        Also output change_points: decisions you made with alternatives,
-        so the user can easily request changes at Checkpoint 2.
-      tools:
-        - name: snowflake_mcp.execute_query
-          instruction: "Query source data for column verification if needed"
-        - name: github_cli.read_file
-          instruction: "Read existing model file for extend_existing modifications"
-      context:
-        static: [naming_conventions, testing_standards]
-        dynamic:
-          - from: design_pipeline
-            select: models
-          - from: discover_reference_patterns
-            select: [reference_examples, domain_conventions]
-          - from: profile_source_data
-            select: [profiles, warnings]
-          - from: classify_intent
-            select: [entry_point, sql_text]
-      output_schema:
-        type: object
-        required: [model_name, sql_content, schema_yml_content, file_path, change_points]
-        properties:
-          model_name:
-            type: string
-          sql_content:
-            type: string
-          schema_yml_content:
-            type: string
-          sources_yml_content:
-            type: string
-          file_path:
-            type: string
-          schema_yml_path:
-            type: string
-          is_modification:
-            type: boolean
-          modification_description:
-            type: string
-          change_points:
-            type: array
-            items:
-              type: object
-              required: [id, section, current, alternatives]
-      budget:
-        max_llm_turns: 5
-        max_tokens: 12000
-
-    # Step 8: Validate generated SQL
-    - id: validate_pipeline
+    # Step 6: Validate output against mandatory checklist
+    - id: validate_output
       mode: reason
       instruction: |
-        Validate the generated SQL for all models. Run these checks:
+        Validate the generated pipeline against mandatory quality requirements.
+        This is a CHECKLIST — every item must pass or be flagged.
 
-        1. SQL COMPILES: For each model, attempt to dry-run the compiled SQL
-           as CREATE TABLE ... AS SELECT ... LIMIT 0 (or EXPLAIN)
-        2. JOIN FANOUT: Compare COUNT(*) before and after each JOIN.
-           Warn if rows increase >5% (likely missing dedup or wrong join key)
-        3. ROW COUNT SANITY: Compare output row count vs source row count
-           from profiling. Warn if >2x (fanout) or <50% (over-filtering)
-        4. NULL PROPAGATION: Check PK and metric columns for unexpected nulls
-           in the output. Warn if PK has any nulls.
-        5. DATE CONTINUITY: Check for date gaps in output where source has
-           continuous dates. Warn if incremental logic missed dates.
-        6. GRAIN VERIFICATION: SELECT pk_columns, COUNT(*) FROM output
-           GROUP BY pk_columns HAVING COUNT(*) > 1 LIMIT 5.
-           FAIL if duplicates found on declared primary key.
+        SQL VALIDATION:
+        1. DBT COMPILE: Use dbt_mcp.compile on each model to verify Jinja syntax,
+           ref() resolution, and macro expansion — FAIL if compilation errors
+        2. DBT PARSE: Use dbt_mcp.parse to validate schema.yml is well-formed
+           and all column references resolve — FAIL if parse errors
+        3. GRAIN: SELECT pk_columns, COUNT(*) HAVING COUNT(*) > 1
+           — FAIL if duplicates on declared primary key
+        4. ROW COUNT: Compare output rows vs source rows from profiling
+           — WARN if >2x (fanout) or <50% (over-filtering)
+        5. NULL PROPAGATION: Check PK and metric columns for nulls
+           — WARN if PK has any nulls
+        6. DATA PREVIEW: Use dbt_mcp.show to preview 5 rows of the final model
+           output through dbt (not raw SQL) to verify it renders correctly
 
-        Report all findings as warnings or errors.
-        Generate a sample_output with first 5 rows of the final model.
+        ARTIFACT VALIDATION (check the generated content):
+        7. SCHEMA.YML EXISTS: Every model has a schema.yml entry — FAIL if missing
+        8. PK TESTS: Every model has unique + not_null on its primary key — FAIL if missing
+        9. SOURCES.YML: New sources have a sources.yml entry with freshness — FAIL if missing
+        10. REF/SOURCE USAGE: SQL uses {{ ref() }} and {{ source() }}, not hardcoded FQNs — FAIL if hardcoded
+        11. EXPLICIT COLUMNS: No SELECT * in any model SQL — FAIL if found
+        12. CONFIG BLOCK: Every model has {{ config() }} matching domain conventions — WARN if missing
+
+        COVERAGE VALIDATION:
+        13. MULTI-BRAND: If profiling found multi_brand_sources, they are unioned — WARN if not
+        14. NAMING: Model names follow domain conventions — WARN if not
+        15. DIRECTORY: File paths match domain directory structure — WARN if not
+        16. LINEAGE: Use dbt_mcp.get_lineage to verify new models integrate
+            correctly into the existing DAG dependency graph — WARN if orphaned
+
+        For each check: report PASS, WARN, or FAIL with details.
       tools:
         - name: snowflake_mcp.execute_query
-          instruction: "Run validation queries against Snowflake"
+          instruction: "Run grain, row count, and null validation queries against Snowflake"
+        - name: dbt_mcp.compile
+          instruction: "Compile each model to verify Jinja syntax and ref() resolution"
+        - name: dbt_mcp.parse
+          instruction: "Parse project to validate schema.yml is well-formed"
+        - name: dbt_mcp.show
+          instruction: "Preview output rows through dbt to verify rendering"
+        - name: dbt_mcp.test
+          instruction: "Run the recommended tests to verify they pass on real data"
+        - name: dbt_mcp.get_lineage
+          instruction: "Verify new models integrate into existing lineage graph"
       context:
         static: []
         dynamic:
-          - from: generate_models
+          - from: build_pipeline
           - from: profile_source_data
-            select: profiles
+            select: [profiles, multi_brand_sources]
+          - from: gather_reference_context
+            select: domain_conventions
       output_schema:
         type: object
-        required: [compiles, warnings, errors, sample_output]
+        required: [checks, overall_status, sample_output]
         properties:
-          compiles:
-            type: boolean
-          warnings:
+          checks:
             type: array
             items:
               type: object
-              required: [model_name, check, detail]
-          errors:
-            type: array
-            items:
-              type: object
-              required: [model_name, check, detail]
+              required: [check_name, status, detail]
+              properties:
+                check_name:
+                  type: string
+                status:
+                  type: string
+                  enum: [pass, warn, fail]
+                detail:
+                  type: string
+          overall_status:
+            type: string
+            enum: [all_pass, has_warnings, has_failures]
           sample_output:
             type: object
             properties:
@@ -751,123 +670,16 @@ workflow:
               row_count:
                 type: integer
       budget:
-        max_llm_turns: 6
-        max_tokens: 10000
-      transitions:
-        - when: "output.errors != []"
-          goto: fix_validation_errors
-        - default: recommend_tests
-
-    # Step 8b: Auto-fix validation errors (max 2 attempts)
-    - id: fix_validation_errors
-      mode: reason
-      instruction: |
-        Attempt to auto-fix the validation errors found by validate_pipeline.
-
-        For each error:
-        - SQL compilation error: read the error message, identify the cause
-          (missing column, wrong type, bad join), regenerate the affected
-          model's SQL
-        - Grain violation: add or fix the dedup logic in the affected model
-        - Join fanout: add DISTINCT or fix the join key
-
-        Output the corrected model files. The Shift driver tracks fix
-        attempts — after 2 failed attempts, proceed to show_results
-        with errors flagged for the user.
-      tools:
-        - name: snowflake_mcp.execute_query
-          instruction: "Re-validate corrected SQL"
-        - name: github_cli.read_file
-          instruction: "Re-read reference SQL if needed for correction"
-      context:
-        static: []
-        dynamic:
-          - from: validate_pipeline
-            select: errors
-          - from: generate_models
-          - from: discover_reference_patterns
-            select: reference_examples
-      output_schema:
-        type: object
-        required: [fixed_models, auto_fix_exhausted]
-        properties:
-          fixed_models:
-            type: array
-            items:
-              type: object
-              required: [model_name, sql_content, fix_description]
-          auto_fix_exhausted:
-            type: boolean
-      budget:
-        max_llm_turns: 5
-        max_tokens: 10000
-      transitions:
-        - default: validate_pipeline
-
-    # Step 9: Recommend tests based on profiling, reference, and conventions
-    - id: recommend_tests
-      mode: reason
-      instruction: |
-        Recommend dbt tests for each generated model. Use 3 sources:
-
-        1. COLUMN TYPES + NAMING:
-           - *_id columns → not_null
-           - Primary key → unique + not_null
-           - Low cardinality columns (<20 distinct values) → accepted_values
-           - Boolean columns → accepted_values [true, false]
-
-        2. REFERENCE PIPELINE TESTS:
-           - Mirror test patterns from the reference model's DBT_TESTS
-           - If reference has reconciliation tests, generate equivalent
-           - If reference has row_count_between tests, generate equivalent
-
-        3. PROFILING RESULTS:
-           - Column with 0% nulls in source → not_null
-           - Column with cardinality == row_count → unique
-           - PK candidate from profiling → unique + not_null
-
-        For each test, include reasoning so the user understands why.
-        Mark tests that come from the reference (from_reference: true).
-      tools:
-        - name: snowflake_mcp.execute_query
-          instruction: "Query DBT_TESTS for reference model test patterns"
-      context:
-        static: [testing_standards]
-        dynamic:
-          - from: generate_models
-          - from: profile_source_data
-            select: profiles
-          - from: discover_reference_patterns
-            select: reference_examples
-      output_schema:
-        type: object
-        required: [recommended_tests]
-        properties:
-          recommended_tests:
-            type: array
-            items:
-              type: object
-              required: [model_name, test_name, column, reasoning]
-              properties:
-                model_name:
-                  type: string
-                test_name:
-                  type: string
-                column:
-                  type: string
-                config:
-                  type: object
-                reasoning:
-                  type: string
-                from_reference:
-                  type: boolean
-      budget:
-        max_llm_turns: 4
-        max_tokens: 8000
+        max_llm_turns: 8
+        max_tokens: 12000
       transitions:
         - default: show_results
 
-    # Step 10: Checkpoint 2 — Show full results for approval
+    # ═══════════════════════════════════════════════════════════
+    # PHASE 4: Delivery (approval gates + PR)
+    # ═══════════════════════════════════════════════════════════
+
+    # Step 7: Checkpoint — show everything to user
     - id: show_results
       mode: execute
       type: delegate
@@ -875,79 +687,81 @@ workflow:
       requires_approval: true
       context:
         dynamic:
-          - from: generate_models
-          - from: validate_pipeline
-          - from: recommend_tests
-          - from: design_pipeline
-            select: dag_recommendation
+          - from: build_pipeline
+          - from: validate_output
+          - from: profile_source_data
+            select: [profiles, warnings]
+          - from: gather_reference_context
+            select: domain_conventions
       output_schema:
         type: object
         required: [user_decision]
         properties:
           user_decision:
             type: string
-            enum: [approve, edit]
-          edit_request:
+            enum: [approve, revise]
+          revision_request:
             type: string
-          edit_count:
+          revision_count:
             type: integer
       transitions:
-        - when: "output.user_decision == 'edit'"
-          goto: apply_changes
+        - when: "output.user_decision == 'revise'"
+          goto: revise_pipeline
         - default: create_pr
 
-    # Step 11: Apply user-requested edits to generated models
-    - id: apply_changes
+    # Step 8: Revise based on user feedback (loops back to show_results)
+    - id: revise_pipeline
       mode: reason
       instruction: |
-        Apply the user's requested changes to the generated models.
+        The user has requested changes to the generated pipeline.
+        Read their revision_request and apply the changes.
 
-        The user may ask to:
-        - Rename a model or column
-        - Change materialization strategy
-        - Add or remove a CTE block
-        - Modify join logic or filters
-        - Change incremental strategy or unique key
-        - Adjust test recommendations
+        You have full context from build_pipeline and validate_output.
+        Modify ONLY what the user asked for. Regenerate the affected
+        model SQL, schema.yml, or sources.yml as needed.
 
-        Read the edit_request from show_results, identify which model(s)
-        are affected, and regenerate the SQL/schema artifacts.
-        Re-validate the changed models to ensure they still compile.
+        Output the complete updated artifacts (full file content, not diffs).
+        Then re-validate: run the same checks from validate_output on the
+        modified models.
 
-        Track edit_count to prevent infinite loops — the Shift driver
-        will enforce a maximum number of edit cycles.
+        The driver tracks revision_count. After 3 rounds, the workflow
+        proceeds to create_pr regardless, with a note that further changes
+        can be made in the PR itself.
       tools:
         - name: snowflake_mcp.execute_query
-          instruction: "Re-validate corrected SQL against Snowflake"
+          instruction: "Re-validate modified SQL"
         - name: github_cli.read_file
-          instruction: "Re-read reference patterns if needed for edits"
+          instruction: "Re-read reference if needed"
       context:
-        static: []
+        static: [naming_conventions, testing_standards]
         dynamic:
           - from: show_results
-            select: [edit_request, edit_count]
-          - from: generate_models
-          - from: validate_pipeline
-          - from: discover_reference_patterns
-            select: reference_examples
+            select: [revision_request, revision_count]
+          - from: build_pipeline
+          - from: validate_output
+          - from: gather_reference_context
+            select: [reference_sql_files, domain_conventions]
       output_schema:
         type: object
-        required: [updated_models, validation_passed]
+        required: [updated_models, validation_checks]
         properties:
           updated_models:
             type: array
             items:
               type: object
-              required: [model_name, sql_content, schema_yml_content, file_path]
-          validation_passed:
-            type: boolean
+              required: [name, sql_content, change_description]
+          validation_checks:
+            type: array
+            items:
+              type: object
+              required: [check_name, status]
       budget:
-        max_llm_turns: 5
-        max_tokens: 10000
+        max_llm_turns: 8
+        max_tokens: 15000
       transitions:
         - default: show_results
 
-    # Step 12: Create PR with all generated artifacts
+    # Step 9: Create PR
     - id: create_pr
       mode: execute
       type: delegate
@@ -955,86 +769,53 @@ workflow:
       requires_approval: true
       context:
         dynamic:
-          - from: generate_models
-          - from: recommend_tests
-          - from: design_pipeline
-          - from: validate_pipeline
-            select: sample_output
+          - from: build_pipeline
+          - from: validate_output
           - from: profile_source_data
-      output_schema:
-        type: object
-        required: [pr_url, branch_name, files_created]
-        properties:
-          pr_url:
-            type: string
-          branch_name:
-            type: string
-          files_created:
-            type: array
-            items:
-              type: string
+            select: [profiles, warnings]
 
-    # Step 13: Recommend orchestration (DAG, schedule, monitoring)
+    # Step 10: Recommend orchestration
     - id: recommend_orchestration
       mode: reason
       instruction: |
-        Recommend how to orchestrate the new pipeline in Airflow/Cosmos.
+        Provide orchestration guidance for the new pipeline.
 
-        Based on the pipeline design and generated models:
-        1. Identify the best existing DAG to add the models to, or
-           recommend creating a new DAG if the domain/schedule doesn't
-           match any existing DAG
-        2. Recommend a schedule based on source freshness from profiling
-           and the reference pipeline's schedule (from DBT_INVOCATIONS)
-        3. Generate a dbt selector that matches the new models
-           (by tag, path, or model name)
-        4. Recommend tags for the new models (domain, frequency, tier)
-        5. Identify downstream models that may need to be aware of
-           the new pipeline (from DBT_MODEL_TABLE_LINEAGE)
-        6. Recommend monitoring: freshness checks, row count alerts,
-           SLA based on expected runtime
-
-        Query DBT_INVOCATIONS for existing DAG patterns:
-        SELECT DISTINCT job_name, schedule, selector
-        FROM DW.DATAOPS_DBT.DBT_INVOCATIONS
-        WHERE job_name ILIKE '%{domain}%'
-        ORDER BY job_name
+        1. Query DBT_INVOCATIONS for the recommended DAG's recent runs
+           to confirm it exists and runs on the expected schedule
+        2. Verify the tags assigned to new models match the DAG's selector
+        3. Identify downstream models that will auto-rebuild
+        4. Recommend monitoring: watch first 3 runs in #ae-alerts
       tools:
         - name: snowflake_mcp.execute_query
-          instruction: "Query DBT_INVOCATIONS for DAG patterns and schedules"
+          instruction: "Query DBT_INVOCATIONS and DBT_MODEL_TABLE_LINEAGE"
       context:
         static: []
         dynamic:
-          - from: design_pipeline
+          - from: build_pipeline
             select: dag_recommendation
-          - from: generate_models
       output_schema:
         type: object
-        required: [dag_name, schedule, selector_match, tags, downstream_impact, monitoring_recommendation]
+        required: [dag_name, schedule, selector_match, downstream_impact, monitoring_recommendation]
         properties:
           dag_name:
             type: string
           schedule:
             type: string
           selector_match:
-            type: string
+            type: boolean
           tags:
             type: array
-            items:
-              type: string
           downstream_impact:
             type: array
             items:
-              type: string
+              type: object
+              properties:
+                model_name:
+                  type: string
+                relationship:
+                  type: string
           monitoring_recommendation:
-            type: object
-            properties:
-              freshness_check:
-                type: string
-              row_count_alert:
-                type: string
-              sla_minutes:
-                type: integer
+            type: string
       budget:
         max_llm_turns: 3
         max_tokens: 5000
