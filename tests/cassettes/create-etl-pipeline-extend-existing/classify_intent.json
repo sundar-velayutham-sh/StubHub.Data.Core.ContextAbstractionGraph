@@ -1,0 +1,18 @@
+{
+  "output": {
+    "entry_point": "extend_existing",
+    "source_hints": ["tiktok"],
+    "reference_model_hint": "marketing_spend_day_country_agg",
+    "domain_hint": "acquisition",
+    "sql_text": null
+  },
+  "decision_log": {
+    "decision": "Classified as extend_existing — user wants to add TikTok as a new channel to an existing pipeline",
+    "rationale": "Request says 'Add TikTok as a new channel to marketing_spend_day_country_agg', indicating extension of an existing model",
+    "alternatives_considered": ["new_source — but user explicitly wants to extend an existing model, not create standalone"],
+    "confidence": "high",
+    "informed_by": []
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1000, "completion": 200}
+}

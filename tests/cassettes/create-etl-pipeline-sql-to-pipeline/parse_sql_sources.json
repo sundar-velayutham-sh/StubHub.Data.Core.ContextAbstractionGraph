@@ -1,0 +1,49 @@
+{
+  "output": {
+    "source_tables": [
+      {
+        "table_fqn": "FIVETRAN_DATABASE.TIKTOK_ADS.CAMPAIGN_REPORT",
+        "columns": [
+          {"name": "CAMPAIGN_ID", "type": "NUMBER", "nullable": false, "ordinal_position": 1},
+          {"name": "STAT_TIME_DAY", "type": "DATE", "nullable": false, "ordinal_position": 2},
+          {"name": "CAMPAIGN_NAME", "type": "VARCHAR", "nullable": true, "ordinal_position": 3},
+          {"name": "IMPRESSIONS", "type": "NUMBER", "nullable": true, "ordinal_position": 4},
+          {"name": "CLICKS", "type": "NUMBER", "nullable": true, "ordinal_position": 5},
+          {"name": "SPEND", "type": "NUMBER", "nullable": true, "ordinal_position": 6},
+          {"name": "CONVERSIONS", "type": "NUMBER", "nullable": true, "ordinal_position": 7},
+          {"name": "COUNTRY_CODE", "type": "VARCHAR", "nullable": true, "ordinal_position": 8},
+          {"name": "_FIVETRAN_SYNCED", "type": "TIMESTAMP_NTZ", "nullable": false, "ordinal_position": 9}
+        ],
+        "row_count": 12400000,
+        "daily_volume": 15000,
+        "freshness_hours": 2.1,
+        "pk_candidates": ["CAMPAIGN_ID", "STAT_TIME_DAY"]
+      }
+    ],
+    "existing_models": [],
+    "reference_pipeline": {
+      "root_model": null,
+      "layers": ["source", "staging", "fact"],
+      "materializations": ["table"],
+      "tests": [],
+      "grain": "campaign_id"
+    },
+    "conventions": {
+      "naming_pattern": "stg_acquisition__{source}__{entity}",
+      "schema": "ACQUISITION",
+      "directory": "models/mart/acquisition/stage/"
+    }
+  },
+  "decision_log": {
+    "decision": "Parsed SQL — 1 source table (tiktok_ads.campaign_report), simple GROUP BY aggregation",
+    "rationale": "SQL is a single-table SELECT with SUM(spend) GROUP BY campaign_id. Decomposed into: staging layer for source, fact layer for aggregation.",
+    "alternatives_considered": ["Inline as single model — rejected, need proper source tracking"],
+    "confidence": "high",
+    "informed_by": ["snowflake_mcp.execute_query", "snowflake_mcp.describe_table"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT name FROM DW.DATAOPS_DBT.DBT_MODELS WHERE depends_on_nodes ILIKE '%tiktok%'"},
+    {"tool": "snowflake_mcp.describe_table", "input": "FIVETRAN_DATABASE.TIKTOK_ADS.CAMPAIGN_REPORT"}
+  ],
+  "token_usage": {"prompt": 4000, "completion": 1500}
+}

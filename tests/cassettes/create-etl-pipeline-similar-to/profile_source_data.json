@@ -1,0 +1,35 @@
+{
+  "output": {
+    "profiles": [
+      {
+        "table_fqn": "FIVETRAN_DATABASE.IMPACT_RADIUS.AFFILIATE_ACTIONS",
+        "row_count": 8500000,
+        "date_range": {"min": "2024-06-01", "max": "2026-03-12"},
+        "daily_avg_rows": 12000,
+        "freshness_hours": 3.5,
+        "pk_candidate": {"columns": ["ACTION_ID"], "is_unique": true},
+        "null_flags": [
+          {"column": "CAMPAIGN_NAME", "null_pct": 0.01},
+          {"column": "SUB_ID", "null_pct": 0.15}
+        ],
+        "has_duplicates": false
+      }
+    ],
+    "warnings": [
+      {"table_fqn": "FIVETRAN_DATABASE.IMPACT_RADIUS.AFFILIATE_ACTIONS", "warning_type": "high_nulls", "detail": "SUB_ID has 15% nulls — may need COALESCE or filter"}
+    ]
+  },
+  "decision_log": {
+    "decision": "Source is mostly healthy — 1 warning on SUB_ID nulls",
+    "rationale": "8.5M rows, 12K/day, 3.5h fresh, PK is unique. SUB_ID has 15% nulls which is flagged but expected for affiliate data.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["snowflake_mcp.execute_query"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT COUNT(*), MIN(ACTION_DATE), MAX(ACTION_DATE) FROM FIVETRAN_DATABASE.IMPACT_RADIUS.AFFILIATE_ACTIONS"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT ACTION_ID, COUNT(*) FROM ... GROUP BY 1 HAVING COUNT(*) > 1 LIMIT 5"},
+    {"tool": "snowflake_mcp.execute_query", "input": "NULL rate analysis per column"}
+  ],
+  "token_usage": {"prompt": 3000, "completion": 800}
+}

@@ -1,0 +1,18 @@
+{
+  "output": {
+    "entry_point": "similar_to",
+    "source_hints": ["affiliate_traffic"],
+    "reference_model_hint": "campaign_day_agg",
+    "domain_hint": "acquisition",
+    "sql_text": null
+  },
+  "decision_log": {
+    "decision": "Classified as similar_to — user references campaign_day_agg and wants a similar pipeline for affiliate traffic",
+    "rationale": "Request says 'like campaign_day_agg but for affiliate traffic', indicating similar_to pattern with a reference model",
+    "alternatives_considered": ["new_source — but user explicitly referenced an existing model to copy"],
+    "confidence": "high",
+    "informed_by": []
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1000, "completion": 200}
+}

@@ -1,0 +1,21 @@
+{
+  "output": {
+    "dag_name": "transform_acquisition__hourly",
+    "schedule": "hourly at :15 past",
+    "selector_match": true,
+    "tags": ["acquisition", "hourly"],
+    "downstream_impact": [],
+    "monitoring_recommendation": "Monitor first 3 runs in #ae-alerts. Watch for: affiliate row count dropping to 0 (source freshness issue), revenue_usd anomalies, grain violations (duplicate action_id). The triage workflow will auto-investigate if tests fail."
+  },
+  "decision_log": {
+    "decision": "transform_acquisition__hourly is the correct DAG — tags match, schedule aligns with incremental staging",
+    "rationale": "DBT_INVOCATIONS shows hourly runs for acquisition staging models; affiliate fits this pattern",
+    "alternatives_considered": ["transform_acquisition__daily — but staging is incremental hourly"],
+    "confidence": "high",
+    "informed_by": ["DBT_INVOCATIONS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT job_name, COUNT(*) FROM DW.DATAOPS_DBT.DBT_INVOCATIONS WHERE job_name ILIKE '%acquisition%hourly%' GROUP BY 1"}
+  ],
+  "token_usage": {"prompt": 2000, "completion": 500}
+}

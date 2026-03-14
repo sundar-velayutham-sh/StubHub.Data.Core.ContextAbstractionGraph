@@ -1,0 +1,19 @@
+{
+  "output": {
+    "recommended_tests": [
+      {"model_name": "stg_acquisition__tiktok_campaign_spend", "test_name": "unique", "column": "md5_key", "config": {}, "reasoning": "PK — campaign_id is unique after GROUP BY", "from_reference": false},
+      {"model_name": "stg_acquisition__tiktok_campaign_spend", "test_name": "not_null", "column": "md5_key", "config": {}, "reasoning": "PK should never be null", "from_reference": false},
+      {"model_name": "stg_acquisition__tiktok_campaign_spend", "test_name": "not_null", "column": "campaign_id", "config": {}, "reasoning": "0% nulls in source profiling", "from_reference": false},
+      {"model_name": "stg_acquisition__tiktok_campaign_spend", "test_name": "not_null", "column": "total_spend", "config": {}, "reasoning": "SUM should never be null when source has data", "from_reference": false}
+    ]
+  },
+  "decision_log": {
+    "decision": "4 tests recommended — all from profiling and SQL analysis",
+    "rationale": "Grain tests from profiling + not_null on aggregated metric",
+    "alternatives_considered": ["row_count_between — skipped, no reference model to mirror from"],
+    "confidence": "high",
+    "informed_by": ["profiling"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 3000, "completion": 800}
+}

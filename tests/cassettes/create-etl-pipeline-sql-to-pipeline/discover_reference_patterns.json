@@ -1,0 +1,34 @@
+{
+  "output": {
+    "reference_examples": [
+      {
+        "model_name": "campaign_spend_daily",
+        "layer": "fact",
+        "raw_sql": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}\n\nWITH staged AS (\n  SELECT * FROM {{ ref('stg_acquisition__google_campaign_stats') }}\n),\n\naggregated AS (\n  SELECT\n    campaign_id,\n    DATE_TRUNC('day', date) AS date,\n    SUM(spend_usd) AS total_spend,\n    SUM(clicks) AS total_clicks,\n    SUM(impressions) AS total_impressions\n  FROM staged\n  GROUP BY 1, 2\n)\n\nSELECT\n  {{ dbt_utils.generate_surrogate_key(['campaign_id', 'date']) }} AS md5_key,\n  *\nFROM aggregated",
+        "compiled_sql": "CREATE TABLE ... AS WITH staged AS ( SELECT * FROM DW.ACQUISITION.STG_ACQUISITION__GOOGLE_CAMPAIGN_STATS ) ...",
+        "config_block": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}",
+        "schema_yml": "models:\n  - name: campaign_spend_daily\n    columns:\n      - name: md5_key\n        tests: [unique, not_null]",
+        "tests": ["unique(md5_key)", "not_null(md5_key)"],
+        "original_path": "models/mart/acquisition/campaign_spend_daily.sql"
+      }
+    ],
+    "domain_conventions": {
+      "common_config_blocks": ["{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}"],
+      "naming_pattern": "stg_acquisition__{source}__{entity}",
+      "typical_materialization": "table",
+      "directory_structure": "models/mart/acquisition/ and models/mart/acquisition/stage/"
+    }
+  },
+  "decision_log": {
+    "decision": "Found campaign_spend_daily as closest pattern — simple staging → fact aggregation",
+    "rationale": "User's SQL is a simple GROUP BY aggregation, matching the standard staging → fact pattern",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["github_cli.read_file"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/mart/acquisition/campaign_spend_daily.sql"},
+    {"tool": "github_cli.search_code", "input": "config(materialized in models/mart/acquisition/"}
+  ],
+  "token_usage": {"prompt": 8000, "completion": 3000}
+}

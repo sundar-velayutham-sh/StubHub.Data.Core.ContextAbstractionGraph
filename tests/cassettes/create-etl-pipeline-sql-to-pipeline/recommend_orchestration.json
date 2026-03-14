@@ -1,0 +1,21 @@
+{
+  "output": {
+    "dag_name": "transform_acquisition__daily",
+    "schedule": "daily at 06:00 UTC",
+    "selector_match": true,
+    "tags": ["acquisition", "daily"],
+    "downstream_impact": [],
+    "monitoring_recommendation": "Monitor first 3 runs in #ae-alerts. Watch for: row count changes, total_spend anomalies. Consider adding a daily row_count_between test once baseline is established."
+  },
+  "decision_log": {
+    "decision": "transform_acquisition__daily is the correct DAG — simple daily table matches existing schedule",
+    "rationale": "DBT_INVOCATIONS shows daily runs for acquisition models; this simple aggregation fits the daily pattern",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["DBT_INVOCATIONS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT job_name, COUNT(*) FROM DW.DATAOPS_DBT.DBT_INVOCATIONS WHERE job_name ILIKE '%acquisition%daily%' GROUP BY 1"}
+  ],
+  "token_usage": {"prompt": 2000, "completion": 500}
+}

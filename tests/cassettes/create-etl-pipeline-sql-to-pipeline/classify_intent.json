@@ -1,0 +1,18 @@
+{
+  "output": {
+    "entry_point": "sql_to_pipeline",
+    "source_hints": ["fivetran_database.tiktok_ads.campaign_report"],
+    "reference_model_hint": null,
+    "domain_hint": "acquisition",
+    "sql_text": "SELECT campaign_id, SUM(spend) AS total_spend FROM fivetran_database.tiktok_ads.campaign_report GROUP BY 1"
+  },
+  "decision_log": {
+    "decision": "Classified as sql_to_pipeline — user provided raw SQL to convert into a proper pipeline",
+    "rationale": "Request says 'Make this a proper pipeline' with SQL text provided. SQL references fivetran_database.tiktok_ads.campaign_report.",
+    "alternatives_considered": ["new_source — but user provided SQL, not just a table name"],
+    "confidence": "high",
+    "informed_by": []
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1000, "completion": 200}
+}

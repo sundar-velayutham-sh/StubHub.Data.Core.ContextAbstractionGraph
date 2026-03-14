@@ -1,0 +1,50 @@
+{
+  "output": {
+    "source_tables": [
+      {
+        "table_fqn": "FIVETRAN_DATABASE.IMPACT_RADIUS.AFFILIATE_ACTIONS",
+        "columns": [
+          {"name": "ACTION_ID", "type": "NUMBER", "nullable": false, "ordinal_position": 1},
+          {"name": "ACTION_DATE", "type": "TIMESTAMP_NTZ", "nullable": false, "ordinal_position": 2},
+          {"name": "CAMPAIGN_ID", "type": "NUMBER", "nullable": false, "ordinal_position": 3},
+          {"name": "CAMPAIGN_NAME", "type": "VARCHAR", "nullable": true, "ordinal_position": 4},
+          {"name": "SUB_ID", "type": "VARCHAR", "nullable": true, "ordinal_position": 5},
+          {"name": "REVENUE", "type": "NUMBER", "nullable": true, "ordinal_position": 6},
+          {"name": "PAYOUT", "type": "NUMBER", "nullable": true, "ordinal_position": 7},
+          {"name": "COUNTRY_CODE", "type": "VARCHAR", "nullable": true, "ordinal_position": 8},
+          {"name": "_FIVETRAN_SYNCED", "type": "TIMESTAMP_NTZ", "nullable": false, "ordinal_position": 9}
+        ],
+        "row_count": 8500000,
+        "daily_volume": 12000,
+        "freshness_hours": 3.5,
+        "pk_candidates": ["ACTION_ID"]
+      }
+    ],
+    "existing_models": [],
+    "reference_pipeline": {
+      "root_model": "campaign_day_agg",
+      "layers": ["source", "staging", "intermediate", "mart"],
+      "materializations": ["view", "table", "table"],
+      "tests": ["unique", "not_null", "accepted_values", "row_count_between"],
+      "grain": "campaign_id + date"
+    },
+    "conventions": {
+      "naming_pattern": "stg_acquisition__{source}__{entity}",
+      "schema": "ACQUISITION",
+      "directory": "models/mart/acquisition/stage/"
+    }
+  },
+  "decision_log": {
+    "decision": "Traced campaign_day_agg lineage — hourly_rollup pattern with 4 layers",
+    "rationale": "campaign_day_agg uses an hourly staging model rolled up to daily mart. Affiliate traffic from Impact Radius fits the same pattern.",
+    "alternatives_considered": ["marketing_spend_day_country_agg — but that's multi_source_union, not hourly_rollup"],
+    "confidence": "high",
+    "informed_by": ["DBT_MODELS", "DBT_MODEL_TABLE_LINEAGE", "DBT_TESTS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT * FROM DW.DATAOPS_DBT.DBT_MODELS WHERE name = 'campaign_day_agg'"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT level, node FROM DW.DATAOPS_DBT.DBT_MODEL_TABLE_LINEAGE WHERE root_table_name ILIKE '%campaign_day_agg%' ORDER BY level"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT short_name, test_column_name FROM DW.DATAOPS_DBT.DBT_TESTS WHERE parent_model_unique_id ILIKE '%campaign_day_agg%'"}
+  ],
+  "token_usage": {"prompt": 4000, "completion": 1500}
+}

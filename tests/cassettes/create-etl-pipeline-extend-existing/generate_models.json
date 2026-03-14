@@ -1,0 +1,28 @@
+{
+  "output": {
+    "model_name": "stg_acquisition__tiktok_campaign_report",
+    "sql_content": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}\n\n-- [SOURCE] TikTok Ads campaign data from Fivetran\nWITH source AS (\n    SELECT * FROM {{ source('tiktok_ads', 'campaign_report') }}\n),\n\n-- [RENAME] Standardize to marketing_spend schema\nrenamed AS (\n    SELECT\n        campaign_id,\n        stat_time_day AS date,\n        campaign_name,\n        country_code AS country,\n        spend AS spend_usd,\n        clicks,\n        impressions,\n        conversions,\n        _fivetran_synced\n    FROM source\n),\n\n-- [FINAL]\nSELECT\n    {{ dbt_utils.generate_surrogate_key(['campaign_id', 'date', 'country']) }} AS md5_key,\n    'tiktok' AS channel,\n    *\nFROM renamed",
+    "schema_yml_content": "models:\n  - name: stg_acquisition__tiktok_campaign_report\n    description: Staging model for TikTok Ads campaign report\n    columns:\n      - name: md5_key\n        description: Surrogate key (campaign_id + date + country)\n        tests:\n          - unique\n          - not_null\n      - name: campaign_id\n        tests:\n          - not_null\n      - name: date\n        tests:\n          - not_null",
+    "sources_yml_content": "sources:\n  - name: tiktok_ads\n    database: FIVETRAN_DATABASE\n    schema: TIKTOK_ADS\n    tables:\n      - name: campaign_report\n        loaded_at_field: _fivetran_synced\n        freshness:\n          warn_after: {count: 24, period: hour}\n          error_after: {count: 48, period: hour}",
+    "file_path": "models/mart/acquisition/stage/stg_acquisition__tiktok_campaign_report.sql",
+    "schema_yml_path": "models/mart/acquisition/stage/schema.yml",
+    "is_modification": false,
+    "modification_description": null,
+    "change_points": [
+      {"id": "ext_tiktok__spend", "section": "spend conversion", "current": "No conversion — TikTok reports in USD", "alternatives": ["Divide by 100 if in cents", "Divide by 1M if in micros"]},
+      {"id": "ext_tiktok__dedup", "section": "deduplication", "current": "No dedup — profiling showed 0 duplicates on PK", "alternatives": ["Add ROW_NUMBER dedup on campaign_id + date"]},
+      {"id": "ext_tiktok__channel_name", "section": "channel identifier", "current": "'tiktok' hardcoded", "alternatives": ["'tiktok_ads'", "'tiktok_paid'"]}
+    ]
+  },
+  "decision_log": {
+    "decision": "Generated staging model + identified UNION ALL modification point in marketing_spend",
+    "rationale": "Adapted existing channel CTE pattern for TikTok. Staging model follows same column structure as other channel staging models.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["reference_examples", "analyze_target_pipeline"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/mart/acquisition/marketing_spend_day_country_agg.sql"}
+  ],
+  "token_usage": {"prompt": 8000, "completion": 3000}
+}

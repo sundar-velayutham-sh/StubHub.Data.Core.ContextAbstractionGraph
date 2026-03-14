@@ -1,0 +1,26 @@
+{
+  "output": {
+    "model_name": "stg_acquisition__affiliate_actions",
+    "sql_content": "{{ config(materialized='incremental', schema='acquisition', tags=['acquisition', 'hourly'], unique_key='md5_key') }}\n\n-- [SOURCE] Impact Radius affiliate actions from Fivetran\nWITH source AS (\n    SELECT * FROM {{ source('impact_radius', 'affiliate_actions') }}\n    {% if is_incremental() %}\n    WHERE _fivetran_synced > (SELECT MAX(_fivetran_synced) FROM {{ this }})\n    {% endif %}\n),\n\n-- [RENAME] Standardize to affiliate schema\nrenamed AS (\n    SELECT\n        action_id,\n        action_date,\n        campaign_id,\n        campaign_name,\n        COALESCE(sub_id, 'unknown') AS sub_id,\n        revenue AS revenue_usd,\n        payout AS payout_usd,\n        country_code AS country,\n        _fivetran_synced\n    FROM source\n),\n\n-- [FINAL]\nSELECT\n    {{ dbt_utils.generate_surrogate_key(['action_id']) }} AS md5_key,\n    *\nFROM renamed",
+    "schema_yml_content": "models:\n  - name: stg_acquisition__affiliate_actions\n    description: Staging model for Impact Radius affiliate actions\n    columns:\n      - name: md5_key\n        description: Surrogate key (action_id)\n        tests:\n          - unique\n          - not_null\n      - name: action_id\n        tests:\n          - not_null\n      - name: action_date\n        tests:\n          - not_null",
+    "sources_yml_content": "sources:\n  - name: impact_radius\n    database: FIVETRAN_DATABASE\n    schema: IMPACT_RADIUS\n    tables:\n      - name: affiliate_actions\n        loaded_at_field: _fivetran_synced\n        freshness:\n          warn_after: {count: 6, period: hour}\n          error_after: {count: 12, period: hour}",
+    "file_path": "models/mart/acquisition/stage/stg_acquisition__affiliate_actions.sql",
+    "schema_yml_path": "models/mart/acquisition/stage/schema.yml",
+    "is_modification": false,
+    "modification_description": null,
+    "change_points": [
+      {"id": "stg_affiliate__sub_id", "section": "sub_id handling", "current": "COALESCE to 'unknown' — 15% nulls from profiling", "alternatives": ["Filter out null sub_id rows", "Leave as NULL"]},
+      {"id": "stg_affiliate__incremental", "section": "incremental strategy", "current": "merge on md5_key with _fivetran_synced lookback", "alternatives": ["delete+insert on action_id", "append-only"]},
+      {"id": "stg_affiliate__freshness", "section": "source freshness", "current": "warn 6h, error 12h (hourly source)", "alternatives": ["warn 3h, error 6h (more aggressive)"]}
+    ]
+  },
+  "decision_log": {
+    "decision": "Generated incremental staging model following campaign_hourly pattern",
+    "rationale": "Adapted stg_acquisition__campaign_hourly's incremental config for affiliate actions. Added COALESCE for sub_id nulls per profiling warning.",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["reference_examples", "profiling"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 8000, "completion": 3000}
+}

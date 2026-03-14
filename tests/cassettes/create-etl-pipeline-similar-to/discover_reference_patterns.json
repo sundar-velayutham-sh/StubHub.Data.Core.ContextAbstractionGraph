@@ -1,0 +1,45 @@
+{
+  "output": {
+    "reference_examples": [
+      {
+        "model_name": "campaign_day_agg",
+        "layer": "mart",
+        "raw_sql": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'hourly']) }}\n\nWITH hourly_data AS (\n  SELECT * FROM {{ ref('stg_acquisition__campaign_hourly') }}\n),\n\naggregated AS (\n  SELECT\n    campaign_id,\n    DATE_TRUNC('day', hour) AS date,\n    SUM(impressions) AS impressions,\n    SUM(clicks) AS clicks,\n    SUM(spend_usd) AS spend_usd,\n    SUM(conversions) AS conversions\n  FROM hourly_data\n  GROUP BY 1, 2\n)\n\nSELECT\n  {{ dbt_utils.generate_surrogate_key(['campaign_id', 'date']) }} AS md5_key,\n  *\nFROM aggregated",
+        "compiled_sql": "CREATE TABLE ... AS WITH hourly_data AS ( SELECT * FROM DW.ACQUISITION.STG_ACQUISITION__CAMPAIGN_HOURLY ) ...",
+        "config_block": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'hourly']) }}",
+        "schema_yml": "models:\n  - name: campaign_day_agg\n    columns:\n      - name: md5_key\n        tests: [unique, not_null]",
+        "tests": ["unique(md5_key)", "not_null(md5_key)", "row_count_between"],
+        "original_path": "models/mart/acquisition/campaign_day_agg.sql"
+      },
+      {
+        "model_name": "stg_acquisition__campaign_hourly",
+        "layer": "staging",
+        "raw_sql": "{{ config(materialized='incremental', schema='acquisition', tags=['acquisition', 'hourly'], unique_key='md5_key') }}\n\nWITH source AS (\n  SELECT * FROM {{ source('google_ads', 'campaign_stats') }}\n  {% if is_incremental() %}\n  WHERE _fivetran_synced > (SELECT MAX(_fivetran_synced) FROM {{ this }})\n  {% endif %}\n),\n\nrenamed AS (\n  SELECT\n    campaign_id,\n    segments_hour AS hour,\n    impressions,\n    clicks,\n    cost_micros / 1000000.0 AS spend_usd,\n    conversions,\n    _fivetran_synced\n  FROM source\n)\n\nSELECT\n  {{ dbt_utils.generate_surrogate_key(['campaign_id', 'hour']) }} AS md5_key,\n  *\nFROM renamed",
+        "compiled_sql": "SELECT ... FROM FIVETRAN_DATABASE.GOOGLE_ADS.CAMPAIGN_STATS ...",
+        "config_block": "{{ config(materialized='incremental', schema='acquisition', tags=['acquisition', 'hourly'], unique_key='md5_key') }}",
+        "schema_yml": "",
+        "tests": [],
+        "original_path": "models/mart/acquisition/stage/stg_acquisition__campaign_hourly.sql"
+      }
+    ],
+    "domain_conventions": {
+      "common_config_blocks": ["{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'hourly']) }}"],
+      "naming_pattern": "stg_acquisition__{source} or {entity}_day_agg",
+      "typical_materialization": "incremental for staging, table for mart",
+      "directory_structure": "models/mart/acquisition/ and models/mart/acquisition/stage/"
+    }
+  },
+  "decision_log": {
+    "decision": "Read campaign_day_agg pipeline as reference — hourly_rollup pattern",
+    "rationale": "Hourly staging incremental → daily mart table aggregation matches affiliate data needs",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["github_cli.read_file"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/mart/acquisition/campaign_day_agg.sql"},
+    {"tool": "github_cli.read_file", "input": "models/mart/acquisition/stage/stg_acquisition__campaign_hourly.sql"},
+    {"tool": "github_cli.search_code", "input": "config(materialized in models/mart/acquisition/"}
+  ],
+  "token_usage": {"prompt": 8000, "completion": 3000}
+}

@@ -1,0 +1,23 @@
+{
+  "output": {
+    "recommended_tests": [
+      {"model_name": "stg_acquisition__tiktok_campaign_report", "test_name": "unique", "column": "md5_key", "config": {}, "reasoning": "PK from profiling — 0 duplicates on campaign_id + date + country", "from_reference": false},
+      {"model_name": "stg_acquisition__tiktok_campaign_report", "test_name": "not_null", "column": "md5_key", "config": {}, "reasoning": "PK should never be null", "from_reference": false},
+      {"model_name": "stg_acquisition__tiktok_campaign_report", "test_name": "not_null", "column": "campaign_id", "config": {}, "reasoning": "0% nulls in source profiling", "from_reference": false},
+      {"model_name": "stg_acquisition__tiktok_campaign_report", "test_name": "not_null", "column": "date", "config": {}, "reasoning": "0% nulls in source profiling", "from_reference": false},
+      {"model_name": "marketing_spend_day_country_agg", "test_name": "row_count_tiktok_last_7d", "column": null, "config": {"min_value": 1000}, "reasoning": "Mirrored from Google/Meta channel tests — ensures TikTok data flows daily", "from_reference": true},
+      {"model_name": "marketing_spend_day_country_agg", "test_name": "spend_usd_tiktok_daily_last_7d", "column": null, "config": {"min_value": 100}, "reasoning": "Mirrored from Meta/Partnerize spend validation — ensures non-zero TikTok spend", "from_reference": true}
+    ]
+  },
+  "decision_log": {
+    "decision": "6 tests recommended — 4 from profiling, 2 mirrored from reference",
+    "rationale": "Grain tests from profiling + channel-specific tests from marketing_spend's existing test pattern",
+    "alternatives_considered": ["accepted_values on country_code — skipped, too many countries"],
+    "confidence": "high",
+    "informed_by": ["profiling", "DBT_TESTS"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT short_name, test_column_name FROM DW.DATAOPS_DBT.DBT_TESTS WHERE parent_model_unique_id ILIKE '%marketing_spend%'"}
+  ],
+  "token_usage": {"prompt": 3000, "completion": 800}
+}
