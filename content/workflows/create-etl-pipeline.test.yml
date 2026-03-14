@@ -1,0 +1,189 @@
+conformance:
+  workflow_id: create-etl-pipeline
+
+  steps:
+    setup_environment:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - snowflake_environment
+      tools_include:
+        - snowflake_mcp.execute_query
+        - github_cli.read_file
+      has_instruction: true
+
+    classify_intent:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - naming_conventions
+      tools_count: 0
+      has_instruction: true
+
+    discover_source_schema:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - snowflake_environment
+      tools_include:
+        - snowflake_mcp.execute_query
+        - snowflake_mcp.describe_table
+      dynamic_refs_from:
+        - classify_intent
+      has_instruction: true
+
+    trace_reference_pipeline:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - snowflake_environment
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - classify_intent
+      has_instruction: true
+
+    parse_sql_sources:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - snowflake_environment
+        - dbt_project_structure
+      tools_include:
+        - snowflake_mcp.execute_query
+        - snowflake_mcp.describe_table
+      dynamic_refs_from:
+        - classify_intent
+      has_instruction: true
+
+    analyze_target_pipeline:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - snowflake_environment
+      tools_include:
+        - snowflake_mcp.execute_query
+        - github_cli.read_file
+      dynamic_refs_from:
+        - setup_environment
+        - classify_intent
+      has_instruction: true
+
+    profile_source_data:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      has_instruction: true
+
+    discover_reference_patterns:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - github_cli.read_file
+        - github_cli.search_code
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - setup_environment
+        - classify_intent
+      has_instruction: true
+
+    design_pipeline:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - naming_conventions
+        - load_frequency_heuristics
+        - dbt_project_structure
+      tools_count: 0
+      dynamic_refs_from:
+        - classify_intent
+        - profile_source_data
+        - discover_reference_patterns
+      has_instruction: true
+
+    confirm_plan:
+      type: DelegateRequest
+      requires_approval: true
+
+    generate_models:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - naming_conventions
+        - testing_standards
+      tools_include:
+        - snowflake_mcp.execute_query
+        - github_cli.read_file
+      dynamic_refs_from:
+        - design_pipeline
+        - discover_reference_patterns
+        - profile_source_data
+        - classify_intent
+      has_instruction: true
+
+    validate_pipeline:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - generate_models
+        - profile_source_data
+      has_instruction: true
+
+    fix_validation_errors:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+        - github_cli.read_file
+      dynamic_refs_from:
+        - validate_pipeline
+        - generate_models
+        - discover_reference_patterns
+      has_instruction: true
+
+    recommend_tests:
+      type: ReasonRequest
+      persona: data_engineer
+      knowledge_includes:
+        - testing_standards
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - generate_models
+        - profile_source_data
+        - discover_reference_patterns
+      has_instruction: true
+
+    show_results:
+      type: DelegateRequest
+      requires_approval: true
+
+    apply_changes:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+        - github_cli.read_file
+      dynamic_refs_from:
+        - show_results
+        - generate_models
+        - validate_pipeline
+        - discover_reference_patterns
+      has_instruction: true
+
+    create_pr:
+      type: DelegateRequest
+      requires_approval: true
+
+    recommend_orchestration:
+      type: ReasonRequest
+      persona: data_engineer
+      tools_include:
+        - snowflake_mcp.execute_query
+      dynamic_refs_from:
+        - design_pipeline
+        - generate_models
+      has_instruction: true
