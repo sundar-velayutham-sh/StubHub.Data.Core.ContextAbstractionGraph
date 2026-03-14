@@ -1,0 +1,18 @@
+{
+  "output": {
+    "snowflake_available": true,
+    "github_available": true
+  },
+  "decision_log": {
+    "decision": "Both Snowflake and GitHub tools available",
+    "rationale": "SELECT 1 succeeded on Snowflake, gh auth status succeeded",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["snowflake_mcp.execute_query", "github_cli.read_file"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT 1"},
+    {"tool": "github_cli.read_file", "input": "models/mart/acquisition/stage/README.md"}
+  ],
+  "token_usage": {"prompt": 500, "completion": 100}
+}

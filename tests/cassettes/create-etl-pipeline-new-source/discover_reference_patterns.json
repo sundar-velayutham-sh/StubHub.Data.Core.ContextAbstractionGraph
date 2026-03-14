@@ -1,0 +1,45 @@
+{
+  "output": {
+    "reference_examples": [
+      {
+        "model_name": "marketing_spend_day_country_agg",
+        "layer": "mart",
+        "raw_sql": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}\n\nWITH google AS (\n  SELECT 'google' AS channel, ...\n),\nmeta AS (\n  SELECT 'meta' AS channel, ...\n),\nunioned AS (\n  SELECT * FROM google\n  UNION ALL\n  SELECT * FROM meta\n  UNION ALL ...\n)\nSELECT\n  {{ dbt_utils.generate_surrogate_key(['channel','date','country']) }} AS md5_key,\n  *\nFROM unioned",
+        "compiled_sql": "CREATE TABLE ... AS WITH google AS ( SELECT 'google' AS channel, ... )",
+        "config_block": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}",
+        "schema_yml": "models:\n  - name: marketing_spend_day_country_agg\n    columns:\n      - name: md5_key\n        tests: [unique, not_null]",
+        "tests": ["unique(md5_key)", "not_null(md5_key)", "row_count_google_last_7d", "spend_usd_meta_daily_last_7d"],
+        "original_path": "models/mart/acquisition/marketing_spend_day_country_agg.sql"
+      },
+      {
+        "model_name": "marketing_spend_day_agg",
+        "layer": "mart_rollup",
+        "raw_sql": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}\n\nSELECT\n  date,\n  channel,\n  SUM(spend_usd) AS spend_usd,\n  SUM(clicks) AS clicks,\n  SUM(impressions) AS impressions\nFROM {{ ref('marketing_spend_day_country_agg') }}\nGROUP BY 1, 2",
+        "compiled_sql": "SELECT date, channel, SUM(spend_usd)... FROM DW.ACQUISITION.MARKETING_SPEND_DAY_COUNTRY_AGG GROUP BY 1,2",
+        "config_block": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}",
+        "schema_yml": "",
+        "tests": [],
+        "original_path": "models/mart/acquisition/marketing_spend_day_agg.sql"
+      }
+    ],
+    "domain_conventions": {
+      "common_config_blocks": ["{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}"],
+      "naming_pattern": "stg_acquisition__{source} or {entity}_day_agg",
+      "typical_materialization": "table",
+      "directory_structure": "models/mart/acquisition/ and models/mart/acquisition/stage/"
+    }
+  },
+  "decision_log": {
+    "decision": "Read marketing_spend pipeline as reference — multi_source_union pattern with UNION ALL",
+    "rationale": "Best match for adding a new channel source to existing multi-channel pipeline",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["github_cli.read_file"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/mart/acquisition/marketing_spend_day_country_agg.sql"},
+    {"tool": "github_cli.read_file", "input": "models/mart/acquisition/marketing_spend_day_agg.sql"},
+    {"tool": "github_cli.search_code", "input": "config(materialized in models/mart/acquisition/"}
+  ],
+  "token_usage": {"prompt": 8000, "completion": 3000}
+}

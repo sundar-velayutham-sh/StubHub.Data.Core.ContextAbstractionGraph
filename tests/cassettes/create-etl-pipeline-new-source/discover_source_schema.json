@@ -1,0 +1,51 @@
+{
+  "output": {
+    "source_tables": [
+      {
+        "table_fqn": "FIVETRAN_DATABASE.TIKTOK_ADS.CAMPAIGN_REPORT",
+        "columns": [
+          {"name": "CAMPAIGN_ID", "type": "NUMBER", "nullable": false, "ordinal_position": 1},
+          {"name": "STAT_TIME_DAY", "type": "DATE", "nullable": false, "ordinal_position": 2},
+          {"name": "CAMPAIGN_NAME", "type": "VARCHAR", "nullable": true, "ordinal_position": 3},
+          {"name": "IMPRESSIONS", "type": "NUMBER", "nullable": true, "ordinal_position": 4},
+          {"name": "CLICKS", "type": "NUMBER", "nullable": true, "ordinal_position": 5},
+          {"name": "SPEND", "type": "NUMBER", "nullable": true, "ordinal_position": 6},
+          {"name": "CONVERSIONS", "type": "NUMBER", "nullable": true, "ordinal_position": 7},
+          {"name": "COUNTRY_CODE", "type": "VARCHAR", "nullable": true, "ordinal_position": 8},
+          {"name": "_FIVETRAN_SYNCED", "type": "TIMESTAMP_NTZ", "nullable": false, "ordinal_position": 9}
+        ],
+        "row_count": 12400000,
+        "daily_volume": 15000,
+        "freshness_hours": 2.1,
+        "pk_candidates": ["CAMPAIGN_ID", "STAT_TIME_DAY"]
+      }
+    ],
+    "existing_models": [],
+    "reference_pipeline": {
+      "root_model": "marketing_spend_day_country_agg",
+      "layers": ["source", "intermediate", "mart", "mart_rollup"],
+      "materializations": ["table", "table"],
+      "tests": ["unique", "not_null", "row_count_between"],
+      "grain": "campaign_id + date + country"
+    },
+    "conventions": {
+      "naming_pattern": "stg_acquisition__{source}__{entity}",
+      "schema": "ACQUISITION",
+      "directory": "models/mart/acquisition/stage/"
+    }
+  },
+  "decision_log": {
+    "decision": "Found source table with 9 columns, identified marketing_spend as reference pipeline",
+    "rationale": "DBT_MODEL_TABLE_LINEAGE shows marketing_spend_day_country_agg already aggregates similar channel sources (Meta, Apple, Google) in the acquisition schema",
+    "alternatives_considered": ["campaign_day_agg — but that's for paid search, not multi-channel spend"],
+    "confidence": "high",
+    "informed_by": ["INFORMATION_SCHEMA", "DBT_MODELS", "DBT_MODEL_TABLE_LINEAGE"]
+  },
+  "tool_calls": [
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT * FROM FIVETRAN_DATABASE.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'CAMPAIGN_REPORT'"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT name, depends_on_nodes FROM DW.DATAOPS_DBT.DBT_MODELS WHERE depends_on_nodes ILIKE '%tiktok%'"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT DISTINCT root_table_name, level, node FROM DW.DATAOPS_DBT.DBT_MODEL_TABLE_LINEAGE WHERE root_table_name ILIKE '%acquisition%' AND level <= 4 LIMIT 50"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT name, materialization, tags FROM DW.DATAOPS_DBT.DBT_MODELS WHERE schema_name = 'ACQUISITION' LIMIT 20"}
+  ],
+  "token_usage": {"prompt": 4000, "completion": 1500}
+}

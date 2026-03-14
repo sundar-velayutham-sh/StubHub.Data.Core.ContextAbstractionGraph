@@ -1,0 +1,18 @@
+{
+  "output": {
+    "entry_point": "new_source",
+    "source_hints": ["fivetran_database.tiktok_ads.campaign_report"],
+    "reference_model_hint": null,
+    "domain_hint": "acquisition",
+    "sql_text": null
+  },
+  "decision_log": {
+    "decision": "Classified as new_source — user wants a pipeline for a specific Fivetran table",
+    "rationale": "Request mentions a fully-qualified table name from Fivetran, no reference model or SQL",
+    "alternatives_considered": ["extend_existing — but user didn't mention adding to an existing pipeline"],
+    "confidence": "high",
+    "informed_by": []
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 1000, "completion": 200}
+}

@@ -1,0 +1,45 @@
+{
+  "output": {
+    "pipeline_pattern": "multi_source_union",
+    "models": [
+      {
+        "name": "stg_acquisition__tiktok_campaign_report",
+        "layer": "staging",
+        "materialization": "table",
+        "depends_on": [],
+        "schema": "ACQUISITION",
+        "is_new": true,
+        "incremental_config": null,
+        "description": "Staging model for TikTok Ads campaign report from Fivetran — standardizes columns to match marketing_spend schema"
+      },
+      {
+        "name": "marketing_spend_day_country_agg",
+        "layer": "mart",
+        "materialization": "table",
+        "depends_on": ["stg_acquisition__tiktok_campaign_report"],
+        "schema": "ACQUISITION",
+        "is_new": false,
+        "incremental_config": null,
+        "description": "MODIFY: Add TikTok CTE block to existing UNION ALL (channel 7 of 7)"
+      }
+    ],
+    "dag_recommendation": {
+      "existing_dag": "transform_acquisition__daily",
+      "tags": ["acquisition", "daily"],
+      "schedule": "daily",
+      "needs_new_dag": false
+    },
+    "skipped_models": [
+      {"name": "marketing_spend_day_agg", "reason": "Downstream rollup — auto-rebuilds from country_agg, no changes needed"}
+    ]
+  },
+  "decision_log": {
+    "decision": "multi_source_union pattern — 1 new staging model + 1 modification to existing agg",
+    "rationale": "marketing_spend already aggregates 6 channels via UNION ALL. Adding TikTok as channel 7 requires: (1) new staging model to standardize TikTok columns, (2) add TikTok CTE to marketing_spend_day_country_agg",
+    "alternatives_considered": ["Standalone TikTok pipeline — rejected because marketing_spend is the canonical cross-channel table"],
+    "confidence": "high",
+    "informed_by": ["reference_examples", "profiling", "domain_conventions"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 5000, "completion": 1500}
+}
