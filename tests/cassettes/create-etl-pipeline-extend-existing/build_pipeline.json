@@ -1,0 +1,54 @@
+{
+  "output": {
+    "design": {
+      "pattern": "multi_source_union",
+      "rationale": "marketing_spend already aggregates 6 channels via UNION ALL. Adding TikTok as channel 7 requires: (1) new staging model, (2) new TikTok CTE in marketing_spend_day_country_agg.",
+      "layers": [
+        {"name": "staging", "models": ["stg_acquisition__tiktok_campaign_report"]},
+        {"name": "mart", "models": ["marketing_spend_day_country_agg"]}
+      ]
+    },
+    "models": [
+      {
+        "name": "stg_acquisition__tiktok_campaign_report",
+        "layer": "staging",
+        "materialization": "table",
+        "sql_content": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}\n\n-- [SOURCE] TikTok Ads campaign data from Fivetran\nWITH source AS (\n    SELECT * FROM {{ source('tiktok_ads', 'campaign_report') }}\n),\n\n-- [RENAME] Standardize to marketing_spend schema\nrenamed AS (\n    SELECT\n        campaign_id,\n        stat_time_day AS date,\n        campaign_name,\n        country_code AS country,\n        spend AS spend_usd,\n        clicks,\n        impressions,\n        conversions,\n        _fivetran_synced\n    FROM source\n),\n\n-- [FINAL]\nSELECT\n    {{ dbt_utils.generate_surrogate_key(['campaign_id', 'date', 'country']) }} AS md5_key,\n    'tiktok' AS channel,\n    *\nFROM renamed",
+        "schema_yml_content": "models:\n  - name: stg_acquisition__tiktok_campaign_report\n    description: Staging model for TikTok Ads campaign report\n    columns:\n      - name: md5_key\n        description: Surrogate key (campaign_id + date + country)\n        tests:\n          - unique\n          - not_null\n      - name: campaign_id\n        tests:\n          - not_null\n      - name: date\n        tests:\n          - not_null",
+        "sources_yml_content": "sources:\n  - name: tiktok_ads\n    database: FIVETRAN_DATABASE\n    schema: TIKTOK_ADS\n    tables:\n      - name: campaign_report\n        loaded_at_field: _fivetran_synced\n        freshness:\n          warn_after: {count: 24, period: hour}\n          error_after: {count: 48, period: hour}",
+        "file_path": "models/mart/acquisition/stage/stg_acquisition__tiktok_campaign_report.sql",
+        "schema_yml_path": "models/mart/acquisition/stage/schema.yml",
+        "is_new": true,
+        "is_modification": false
+      },
+      {
+        "name": "marketing_spend_day_country_agg",
+        "layer": "mart",
+        "materialization": "table",
+        "sql_content": "-- MODIFIED: Added TikTok CTE block to existing UNION ALL (channel 7 of 7)\n{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}\n\nWITH google AS (...),\nmeta AS (...),\npartnerize AS (...),\ntiktok AS (\n  SELECT\n    'tiktok' AS channel,\n    date, country, spend_usd, clicks, impressions\n  FROM {{ ref('stg_acquisition__tiktok_campaign_report') }}\n),\nunioned AS (\n  SELECT * FROM google UNION ALL\n  SELECT * FROM meta UNION ALL\n  SELECT * FROM partnerize UNION ALL\n  SELECT * FROM tiktok\n)\nSELECT {{ dbt_utils.generate_surrogate_key(['channel','date','country']) }} AS md5_key, * FROM unioned",
+        "schema_yml_content": "models:\n  - name: marketing_spend_day_country_agg\n    columns:\n      - name: md5_key\n        tests: [unique, not_null]",
+        "file_path": "models/mart/acquisition/marketing_spend_day_country_agg.sql",
+        "schema_yml_path": "models/mart/acquisition/schema.yml",
+        "is_new": false,
+        "is_modification": true
+      }
+    ],
+    "dag_recommendation": {
+      "existing_dag": "transform_acquisition__daily",
+      "tags": ["acquisition", "daily"],
+      "schedule": "daily",
+      "needs_new_dag": false
+    }
+  },
+  "decision_log": {
+    "decision": "multi_source_union pattern — 1 new staging model + 1 modification to existing agg",
+    "rationale": "marketing_spend already aggregates 6 channels via UNION ALL. Adding TikTok as channel 7.",
+    "alternatives_considered": ["Standalone TikTok pipeline — rejected because marketing_spend is the canonical cross-channel table"],
+    "confidence": "high",
+    "informed_by": ["reference_examples", "profiling", "analyze_target_pipeline"]
+  },
+  "tool_calls": [
+    {"tool": "github_cli.read_file", "input": "models/mart/acquisition/marketing_spend_day_country_agg.sql"}
+  ],
+  "token_usage": {"prompt": 12000, "completion": 5000}
+}

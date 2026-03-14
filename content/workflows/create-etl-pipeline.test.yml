@@ -76,7 +76,7 @@ conformance:
         - snowflake_mcp.execute_query
       has_instruction: true
 
-    discover_reference_patterns:
+    gather_reference_context:
       type: ReasonRequest
       persona: data_engineer
       tools_include:
@@ -88,90 +88,60 @@ conformance:
         - classify_intent
       has_instruction: true
 
-    design_pipeline:
+    build_pipeline:
       type: ReasonRequest
       persona: data_engineer
       knowledge_includes:
         - naming_conventions
+        - testing_standards
         - load_frequency_heuristics
         - dbt_project_structure
-      tools_count: 0
-      dynamic_refs_from:
-        - classify_intent
-        - profile_source_data
-        - discover_reference_patterns
-      has_instruction: true
-
-    confirm_plan:
-      type: DelegateRequest
-      requires_approval: true
-
-    generate_models:
-      type: ReasonRequest
-      persona: data_engineer
-      knowledge_includes:
-        - naming_conventions
-        - testing_standards
       tools_include:
         - snowflake_mcp.execute_query
         - github_cli.read_file
+        - dbt_mcp.compile
+        - dbt_mcp.show
+        - dbt_mcp.get_lineage
       dynamic_refs_from:
-        - design_pipeline
-        - discover_reference_patterns
-        - profile_source_data
         - classify_intent
-      has_instruction: true
-
-    validate_pipeline:
-      type: ReasonRequest
-      persona: data_engineer
-      tools_include:
-        - snowflake_mcp.execute_query
-      dynamic_refs_from:
-        - generate_models
         - profile_source_data
+        - gather_reference_context
       has_instruction: true
 
-    fix_validation_errors:
+    validate_output:
       type: ReasonRequest
       persona: data_engineer
       tools_include:
         - snowflake_mcp.execute_query
-        - github_cli.read_file
+        - dbt_mcp.compile
+        - dbt_mcp.parse
+        - dbt_mcp.show
+        - dbt_mcp.test
+        - dbt_mcp.get_lineage
       dynamic_refs_from:
-        - validate_pipeline
-        - generate_models
-        - discover_reference_patterns
-      has_instruction: true
-
-    recommend_tests:
-      type: ReasonRequest
-      persona: data_engineer
-      knowledge_includes:
-        - testing_standards
-      tools_include:
-        - snowflake_mcp.execute_query
-      dynamic_refs_from:
-        - generate_models
+        - build_pipeline
         - profile_source_data
-        - discover_reference_patterns
+        - gather_reference_context
       has_instruction: true
 
     show_results:
       type: DelegateRequest
       requires_approval: true
 
-    apply_changes:
+    revise_pipeline:
       type: ReasonRequest
       persona: data_engineer
+      knowledge_includes:
+        - naming_conventions
+        - testing_standards
       tools_include:
         - snowflake_mcp.execute_query
         - github_cli.read_file
       dynamic_refs_from:
         - show_results
-        - generate_models
-        - validate_pipeline
-        - discover_reference_patterns
+        - build_pipeline
+        - validate_output
+        - gather_reference_context
       has_instruction: true
 
     create_pr:
@@ -184,6 +154,5 @@ conformance:
       tools_include:
         - snowflake_mcp.execute_query
       dynamic_refs_from:
-        - design_pipeline
-        - generate_models
+        - build_pipeline
       has_instruction: true

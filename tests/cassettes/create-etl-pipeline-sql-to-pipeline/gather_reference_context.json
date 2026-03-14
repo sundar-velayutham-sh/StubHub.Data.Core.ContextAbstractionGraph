@@ -1,6 +1,6 @@
 {
   "output": {
-    "reference_examples": [
+    "reference_sql_files": [
       {
         "model_name": "campaign_spend_daily",
         "layer": "fact",
@@ -20,8 +20,8 @@
     }
   },
   "decision_log": {
-    "decision": "Found campaign_spend_daily as closest pattern — simple staging → fact aggregation",
-    "rationale": "User's SQL is a simple GROUP BY aggregation, matching the standard staging → fact pattern",
+    "decision": "Found campaign_spend_daily as closest pattern — simple staging -> fact aggregation",
+    "rationale": "User's SQL is a simple GROUP BY aggregation, matching the standard staging -> fact pattern",
     "alternatives_considered": [],
     "confidence": "high",
     "informed_by": ["github_cli.read_file"]

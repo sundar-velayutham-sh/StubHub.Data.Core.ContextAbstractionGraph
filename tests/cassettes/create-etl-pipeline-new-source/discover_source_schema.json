@@ -21,6 +21,13 @@
       }
     ],
     "existing_models": [],
+    "similar_pipelines": [
+      {
+        "model_name": "marketing_spend_day_country_agg",
+        "pattern": "multi_source_union",
+        "relevance": "Same domain — multi-channel spend aggregation via UNION ALL"
+      }
+    ],
     "reference_pipeline": {
       "root_model": "marketing_spend_day_country_agg",
       "layers": ["source", "intermediate", "mart", "mart_rollup"],

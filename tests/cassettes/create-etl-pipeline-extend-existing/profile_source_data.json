@@ -4,30 +4,60 @@
       {
         "table_fqn": "FIVETRAN_DATABASE.TIKTOK_ADS.CAMPAIGN_REPORT",
         "row_count": 12400000,
-        "date_range": {"min": "2024-01-15", "max": "2026-03-12"},
+        "date_range": {
+          "min": "2024-01-15",
+          "max": "2026-03-12"
+        },
         "daily_avg_rows": 15234,
         "freshness_hours": 2.1,
-        "pk_candidate": {"columns": ["CAMPAIGN_ID", "STAT_TIME_DAY"], "is_unique": true},
+        "pk_candidate": {
+          "columns": [
+            "CAMPAIGN_ID",
+            "STAT_TIME_DAY"
+          ],
+          "is_unique": true
+        },
         "null_flags": [
-          {"column": "CAMPAIGN_NAME", "null_pct": 0.002},
-          {"column": "COUNTRY_CODE", "null_pct": 0.0}
+          {
+            "column": "CAMPAIGN_NAME",
+            "null_pct": 0.002
+          },
+          {
+            "column": "COUNTRY_CODE",
+            "null_pct": 0.0
+          }
         ],
         "has_duplicates": false
       }
     ],
-    "warnings": []
+    "warnings": [],
+    "multi_brand_sources": []
   },
   "decision_log": {
-    "decision": "Source is healthy — no warnings",
+    "decision": "Source is healthy \u2014 no warnings",
     "rationale": "12.4M rows, 15K/day, 2h fresh, PK is unique, no significant nulls, no duplicates",
     "alternatives_considered": [],
     "confidence": "high",
-    "informed_by": ["snowflake_mcp.execute_query"]
+    "informed_by": [
+      "snowflake_mcp.execute_query"
+    ]
   },
   "tool_calls": [
-    {"tool": "snowflake_mcp.execute_query", "input": "SELECT COUNT(*), MIN(STAT_TIME_DAY), MAX(STAT_TIME_DAY) FROM FIVETRAN_DATABASE.TIKTOK_ADS.CAMPAIGN_REPORT"},
-    {"tool": "snowflake_mcp.execute_query", "input": "SELECT CAMPAIGN_ID, STAT_TIME_DAY, COUNT(*) FROM ... GROUP BY 1,2 HAVING COUNT(*) > 1 LIMIT 5"},
-    {"tool": "snowflake_mcp.execute_query", "input": "NULL rate analysis per column"}
+    {
+      "tool": "snowflake_mcp.execute_query",
+      "input": "SELECT COUNT(*), MIN(STAT_TIME_DAY), MAX(STAT_TIME_DAY) FROM FIVETRAN_DATABASE.TIKTOK_ADS.CAMPAIGN_REPORT"
+    },
+    {
+      "tool": "snowflake_mcp.execute_query",
+      "input": "SELECT CAMPAIGN_ID, STAT_TIME_DAY, COUNT(*) FROM ... GROUP BY 1,2 HAVING COUNT(*) > 1 LIMIT 5"
+    },
+    {
+      "tool": "snowflake_mcp.execute_query",
+      "input": "NULL rate analysis per column"
+    }
   ],
-  "token_usage": {"prompt": 3000, "completion": 800}
+  "token_usage": {
+    "prompt": 3000,
+    "completion": 800
+  }
 }

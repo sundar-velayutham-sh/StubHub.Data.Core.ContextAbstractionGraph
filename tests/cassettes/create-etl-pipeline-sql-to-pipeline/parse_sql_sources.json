@@ -21,6 +21,13 @@
       }
     ],
     "existing_models": [],
+    "similar_pipelines": [
+      {
+        "model_name": "campaign_spend_daily",
+        "pattern": "standard",
+        "relevance": "Same domain — simple staging to fact aggregation"
+      }
+    ],
     "reference_pipeline": {
       "root_model": null,
       "layers": ["source", "staging", "fact"],

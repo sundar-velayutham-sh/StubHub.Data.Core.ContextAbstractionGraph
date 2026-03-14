@@ -1,6 +1,6 @@
 {
   "output": {
-    "reference_examples": [
+    "reference_sql_files": [
       {
         "model_name": "campaign_day_agg",
         "layer": "mart",
@@ -31,7 +31,7 @@
   },
   "decision_log": {
     "decision": "Read campaign_day_agg pipeline as reference — hourly_rollup pattern",
-    "rationale": "Hourly staging incremental → daily mart table aggregation matches affiliate data needs",
+    "rationale": "Hourly staging incremental -> daily mart table aggregation matches affiliate data needs",
     "alternatives_considered": [],
     "confidence": "high",
     "informed_by": ["github_cli.read_file"]

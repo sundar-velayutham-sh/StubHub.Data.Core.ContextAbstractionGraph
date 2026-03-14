@@ -58,19 +58,14 @@ class TestCreateEtlPipelineConformance:
         }
 
         # Steps that execute on new_source path
-        # generate_models runs twice (2 models in design_pipeline)
         new_source_path = [
             "setup_environment",
             "classify_intent",
             "discover_source_schema",
             "profile_source_data",
-            "discover_reference_patterns",
-            "design_pipeline",
-            "confirm_plan",
-            "generate_models",
-            "generate_models",
-            "validate_pipeline",
-            "recommend_tests",
+            "gather_reference_context",
+            "build_pipeline",
+            "validate_output",
             "show_results",
             "create_pr",
             "recommend_orchestration",
@@ -82,11 +77,9 @@ class TestCreateEtlPipelineConformance:
             "classify_intent",
             "discover_source_schema",
             "profile_source_data",
-            "discover_reference_patterns",
-            "design_pipeline",
-            "generate_models",
-            "validate_pipeline",
-            "recommend_tests",
+            "gather_reference_context",
+            "build_pipeline",
+            "validate_output",
             "recommend_orchestration",
         ]
         step_outputs = {}
@@ -141,10 +134,8 @@ class TestCreateEtlPipelineConformance:
             if isinstance(request, ReasonRequest):
                 run.record_result(step_id, StepSuccess(output=step_outputs.get(step_id, {"placeholder": True})))
             elif isinstance(request, DelegateRequest):
-                if step_id == "confirm_plan":
-                    run.record_result(step_id, StepSuccess(output={"user_decision": "approve", "feedback": ""}))
-                elif step_id == "show_results":
-                    run.record_result(step_id, StepSuccess(output={"user_decision": "approve", "edit_request": "", "edit_count": 0}))
+                if step_id == "show_results":
+                    run.record_result(step_id, StepSuccess(output={"user_decision": "approve", "revision_request": "", "revision_count": 0}))
                 elif step_id == "create_pr":
                     run.record_result(step_id, StepSuccess(output={"pr_url": "https://github.com/stubhub/astronomer/pull/123", "pr_number": 123}))
 

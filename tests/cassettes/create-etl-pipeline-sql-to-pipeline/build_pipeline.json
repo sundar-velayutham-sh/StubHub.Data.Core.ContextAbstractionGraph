@@ -1,0 +1,40 @@
+{
+  "output": {
+    "design": {
+      "pattern": "standard",
+      "rationale": "User's SQL is a simple SELECT ... GROUP BY from a single source. Standard pattern: staging model with proper source tracking, config, and tests.",
+      "layers": [
+        {"name": "staging", "models": ["stg_acquisition__tiktok_campaign_spend"]}
+      ]
+    },
+    "models": [
+      {
+        "name": "stg_acquisition__tiktok_campaign_spend",
+        "layer": "staging",
+        "materialization": "table",
+        "sql_content": "{{ config(materialized='table', schema='acquisition', tags=['acquisition', 'daily']) }}\n\n-- [SOURCE] TikTok Ads campaign data from Fivetran\nWITH source AS (\n    SELECT * FROM {{ source('tiktok_ads', 'campaign_report') }}\n),\n\n-- [RENAME] Standardize column names\nrenamed AS (\n    SELECT\n        campaign_id,\n        stat_time_day AS date,\n        campaign_name,\n        spend AS spend_usd,\n        clicks,\n        impressions,\n        conversions,\n        country_code,\n        _fivetran_synced\n    FROM source\n),\n\n-- [AGGREGATE] Replicate user's ad-hoc SQL as proper model\naggregated AS (\n    SELECT\n        campaign_id,\n        SUM(spend_usd) AS total_spend\n    FROM renamed\n    GROUP BY 1\n),\n\n-- [FINAL]\nSELECT\n    {{ dbt_utils.generate_surrogate_key(['campaign_id']) }} AS md5_key,\n    *\nFROM aggregated",
+        "schema_yml_content": "models:\n  - name: stg_acquisition__tiktok_campaign_spend\n    description: TikTok campaign spend aggregation — converted from ad-hoc SQL\n    columns:\n      - name: md5_key\n        description: Surrogate key (campaign_id)\n        tests:\n          - unique\n          - not_null\n      - name: campaign_id\n        tests:\n          - not_null\n      - name: total_spend\n        tests:\n          - not_null",
+        "sources_yml_content": "sources:\n  - name: tiktok_ads\n    database: FIVETRAN_DATABASE\n    schema: TIKTOK_ADS\n    tables:\n      - name: campaign_report\n        loaded_at_field: _fivetran_synced\n        freshness:\n          warn_after: {count: 24, period: hour}\n          error_after: {count: 48, period: hour}",
+        "file_path": "models/mart/acquisition/stage/stg_acquisition__tiktok_campaign_spend.sql",
+        "schema_yml_path": "models/mart/acquisition/stage/schema.yml",
+        "is_new": true,
+        "is_modification": false
+      }
+    ],
+    "dag_recommendation": {
+      "existing_dag": "transform_acquisition__daily",
+      "tags": ["acquisition", "daily"],
+      "schedule": "daily",
+      "needs_new_dag": false
+    }
+  },
+  "decision_log": {
+    "decision": "standard pattern — 1 new staging model that replaces the ad-hoc SQL",
+    "rationale": "User's SQL is a simple SELECT ... GROUP BY from a single source.",
+    "alternatives_considered": ["Two models (staging + fact) — rejected, the SQL is simple enough for a single staging model with aggregation"],
+    "confidence": "high",
+    "informed_by": ["reference_examples", "profiling", "sql_analysis"]
+  },
+  "tool_calls": [],
+  "token_usage": {"prompt": 12000, "completion": 5000}
+}

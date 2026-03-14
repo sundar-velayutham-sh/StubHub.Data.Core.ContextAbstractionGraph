@@ -1,0 +1,44 @@
+{
+  "output": {
+    "checks": [
+      {"check_name": "dbt_compile", "status": "pass", "detail": "All models compile successfully"},
+      {"check_name": "dbt_parse", "status": "pass", "detail": "schema.yml is well-formed"},
+      {"check_name": "grain_check", "status": "pass", "detail": "0 duplicates on campaign_id after GROUP BY"},
+      {"check_name": "row_count", "status": "pass", "detail": "8923 rows — matches expected aggregation from user SQL"},
+      {"check_name": "null_propagation", "status": "pass", "detail": "No nulls on PK or metric columns"},
+      {"check_name": "data_preview", "status": "pass", "detail": "5 rows rendered correctly via dbt show"},
+      {"check_name": "schema_yml_exists", "status": "pass", "detail": "All models have schema.yml entries"},
+      {"check_name": "pk_tests", "status": "pass", "detail": "unique + not_null on md5_key"},
+      {"check_name": "sources_yml", "status": "pass", "detail": "tiktok_ads source defined with freshness"},
+      {"check_name": "ref_source_usage", "status": "pass", "detail": "All SQL uses ref() and source() — no hardcoded FQNs"},
+      {"check_name": "explicit_columns", "status": "pass", "detail": "No SELECT * in any model"},
+      {"check_name": "config_block", "status": "pass", "detail": "All models have config() matching domain conventions"},
+      {"check_name": "naming", "status": "pass", "detail": "Model names follow domain conventions"},
+      {"check_name": "directory", "status": "pass", "detail": "File paths match domain directory structure"},
+      {"check_name": "lineage", "status": "pass", "detail": "New models integrate into existing DAG"}
+    ],
+    "overall_status": "all_pass",
+    "sample_output": {
+      "columns": ["md5_key", "campaign_id", "total_spend"],
+      "rows": [
+        ["a1b2c3...", 12345, 45678.90],
+        ["d4e5f6...", 67890, 23456.78],
+        ["g7h8i9...", 11111, 12345.67]
+      ],
+      "row_count": 8923
+    }
+  },
+  "decision_log": {
+    "decision": "All validation checks passed",
+    "rationale": "SQL compiles, grain verified (0 dupes on campaign_id), output matches expected aggregation from user SQL",
+    "alternatives_considered": [],
+    "confidence": "high",
+    "informed_by": ["snowflake_mcp.execute_query", "dbt_mcp.compile", "dbt_mcp.show"]
+  },
+  "tool_calls": [
+    {"tool": "dbt_mcp.compile", "input": "stg_acquisition__tiktok_campaign_spend"},
+    {"tool": "snowflake_mcp.execute_query", "input": "SELECT campaign_id, COUNT(*) HAVING COUNT(*) > 1"},
+    {"tool": "dbt_mcp.show", "input": "stg_acquisition__tiktok_campaign_spend --limit 5"}
+  ],
+  "token_usage": {"prompt": 4000, "completion": 1000}
+}

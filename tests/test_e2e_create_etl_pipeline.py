@@ -1,12 +1,12 @@
 """
 End-to-end test for the create-etl-pipeline workflow.
 
-Tests the full 18-step workflow with 4 ENTRY POINT BRANCHES at classify_intent.
+Tests the 14-step guardrails-model workflow with 4 ENTRY POINT BRANCHES at classify_intent.
 Each test class exercises a different entry point:
-  - TestNewSource: classify -> discover_source_schema -> profile -> design -> generate -> validate -> orchestration
-  - TestSimilarTo: classify -> trace_reference_pipeline -> profile -> design -> generate -> validate -> orchestration
-  - TestSqlToPipeline: classify -> parse_sql_sources -> profile -> design -> generate -> validate -> orchestration
-  - TestExtendExisting: classify -> analyze_target_pipeline -> profile -> design -> generate -> validate -> orchestration
+  - TestNewSource: classify -> discover_source_schema -> profile -> gather_reference -> build -> validate -> orchestration
+  - TestSimilarTo: classify -> trace_reference_pipeline -> profile -> gather_reference -> build -> validate -> orchestration
+  - TestSqlToPipeline: classify -> parse_sql_sources -> profile -> gather_reference -> build -> validate -> orchestration
+  - TestExtendExisting: classify -> analyze_target_pipeline -> profile -> gather_reference -> build -> validate -> orchestration
 """
 import json
 from pathlib import Path
@@ -24,19 +24,14 @@ from dcag.types import (
 CONTENT_DIR = Path(__file__).parent.parent / "content"
 
 # Steps for new_source path (discovery via discover_source_schema)
-# generate_models runs twice (loop over design_pipeline.models which has 2 models)
 NEW_SOURCE_STEPS = [
     "setup_environment",
     "classify_intent",
     "discover_source_schema",
     "profile_source_data",
-    "discover_reference_patterns",
-    "design_pipeline",
-    "confirm_plan",
-    "generate_models",
-    "generate_models",
-    "validate_pipeline",
-    "recommend_tests",
+    "gather_reference_context",
+    "build_pipeline",
+    "validate_output",
     "show_results",
     "create_pr",
     "recommend_orchestration",
@@ -48,12 +43,9 @@ SIMILAR_TO_STEPS = [
     "classify_intent",
     "trace_reference_pipeline",
     "profile_source_data",
-    "discover_reference_patterns",
-    "design_pipeline",
-    "confirm_plan",
-    "generate_models",
-    "validate_pipeline",
-    "recommend_tests",
+    "gather_reference_context",
+    "build_pipeline",
+    "validate_output",
     "show_results",
     "create_pr",
     "recommend_orchestration",
@@ -65,31 +57,23 @@ SQL_TO_PIPELINE_STEPS = [
     "classify_intent",
     "parse_sql_sources",
     "profile_source_data",
-    "discover_reference_patterns",
-    "design_pipeline",
-    "confirm_plan",
-    "generate_models",
-    "validate_pipeline",
-    "recommend_tests",
+    "gather_reference_context",
+    "build_pipeline",
+    "validate_output",
     "show_results",
     "create_pr",
     "recommend_orchestration",
 ]
 
 # Steps for extend_existing path (discovery via analyze_target_pipeline)
-# generate_models runs twice (loop over design_pipeline.models which has 2 models: 1 new + 1 modification)
 EXTEND_EXISTING_STEPS = [
     "setup_environment",
     "classify_intent",
     "analyze_target_pipeline",
     "profile_source_data",
-    "discover_reference_patterns",
-    "design_pipeline",
-    "confirm_plan",
-    "generate_models",
-    "generate_models",
-    "validate_pipeline",
-    "recommend_tests",
+    "gather_reference_context",
+    "build_pipeline",
+    "validate_output",
     "show_results",
     "create_pr",
     "recommend_orchestration",
@@ -114,7 +98,7 @@ def run_workflow(
 ) -> tuple:
     """Drive the workflow with cassette responses, handling branching and delegation."""
     engine = DCAGEngine(content_dir=CONTENT_DIR)
-    reason_steps = [s for s in expected_steps if s not in ("confirm_plan", "show_results", "create_pr")]
+    reason_steps = [s for s in expected_steps if s not in ("show_results", "create_pr")]
     cassettes = load_cassettes(cassette_dir, reason_steps)
 
     run = engine.start("create-etl-pipeline", inputs)
@@ -139,15 +123,10 @@ def run_workflow(
             )
 
         elif isinstance(request, DelegateRequest):
-            if request.step_id == "confirm_plan":
+            if request.step_id == "show_results":
                 run.record_result(
                     request.step_id,
-                    StepSuccess(output={"user_decision": "approve", "feedback": ""}),
-                )
-            elif request.step_id == "show_results":
-                run.record_result(
-                    request.step_id,
-                    StepSuccess(output={"user_decision": "approve", "edit_request": "", "edit_count": 0}),
+                    StepSuccess(output={"user_decision": "approve", "revision_request": "", "revision_count": 0}),
                 )
             elif request.step_id == "create_pr":
                 run.record_result(
@@ -159,7 +138,7 @@ def run_workflow(
 
 
 class TestNewSource:
-    """New source path: setup -> classify -> discover_source -> profile -> reference -> design -> confirm -> generate -> validate -> tests -> show -> PR -> orchestration."""
+    """New source path: setup -> classify -> discover_source -> profile -> gather_reference -> build -> validate -> show -> PR -> orchestration."""
 
     CASSETTE_DIR = Path(__file__).parent / "cassettes" / "create-etl-pipeline-new-source"
     INPUTS = {"request_text": "Build a pipeline for fivetran_database.tiktok_ads.campaign_report"}
@@ -171,7 +150,7 @@ class TestNewSource:
 
     def test_new_source_path_step_count(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, NEW_SOURCE_STEPS)
-        assert len(steps_executed) == 14  # generate_models loops twice (2 models)
+        assert len(steps_executed) == 10
 
     def test_classify_returns_new_source(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, NEW_SOURCE_STEPS)
@@ -189,27 +168,26 @@ class TestNewSource:
 
     def test_pipeline_pattern_is_multi_source_union(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, NEW_SOURCE_STEPS)
-        assert reason_outputs["design_pipeline"]["pipeline_pattern"] == "multi_source_union"
+        assert reason_outputs["build_pipeline"]["design"]["pattern"] == "multi_source_union"
 
     def test_design_has_2_models(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, NEW_SOURCE_STEPS)
-        models = reason_outputs["design_pipeline"]["models"]
+        models = reason_outputs["build_pipeline"]["models"]
         assert len(models) == 2
         assert models[0]["is_new"] is True
         assert models[1]["is_new"] is False  # modification to existing
 
     def test_validation_passes(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, NEW_SOURCE_STEPS)
-        assert reason_outputs["validate_pipeline"]["compiles"] is True
-        assert reason_outputs["validate_pipeline"]["errors"] == []
+        assert reason_outputs["validate_output"]["overall_status"] == "all_pass"
 
     def test_tests_recommended(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, NEW_SOURCE_STEPS)
-        tests = reason_outputs["recommend_tests"]["recommended_tests"]
-        assert len(tests) >= 4
-        test_names = [t["test_name"] for t in tests]
-        assert "unique" in test_names
-        assert "not_null" in test_names
+        # Tests are now embedded in build_pipeline's schema_yml_content
+        models = reason_outputs["build_pipeline"]["models"]
+        schema_yml = models[0]["schema_yml_content"]
+        assert "unique" in schema_yml
+        assert "not_null" in schema_yml
 
     def test_orchestration_uses_existing_dag(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, NEW_SOURCE_STEPS)
@@ -232,21 +210,9 @@ class TestNewSource:
         assert "discover_source_schema" in step_ids
         assert "trace_reference_pipeline" not in step_ids
 
-    def test_generated_sql_has_tiktok_source(self):
-        _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, NEW_SOURCE_STEPS)
-        sql = reason_outputs["generate_models"]["sql_content"]
-        assert "tiktok_ads" in sql
-        assert "campaign_report" in sql
-
-    def test_change_points_provided(self):
-        _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, NEW_SOURCE_STEPS)
-        cps = reason_outputs["generate_models"]["change_points"]
-        assert len(cps) >= 2
-        assert any("spend" in cp["section"].lower() for cp in cps)
-
 
 class TestSimilarTo:
-    """Similar-to path: setup -> classify -> trace_reference -> profile -> reference -> design -> confirm -> generate -> validate -> tests -> show -> PR -> orchestration."""
+    """Similar-to path: setup -> classify -> trace_reference -> profile -> gather_reference -> build -> validate -> show -> PR -> orchestration."""
 
     CASSETTE_DIR = Path(__file__).parent / "cassettes" / "create-etl-pipeline-similar-to"
     INPUTS = {"request_text": "Build something like campaign_day_agg but for affiliate traffic"}
@@ -259,7 +225,7 @@ class TestSimilarTo:
 
     def test_similar_to_path_step_count(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, SIMILAR_TO_STEPS)
-        assert len(steps_executed) == 13  # generate_models loops once (1 model)
+        assert len(steps_executed) == 10
 
     def test_classify_returns_similar_to(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, SIMILAR_TO_STEPS)
@@ -271,7 +237,7 @@ class TestSimilarTo:
 
     def test_pipeline_pattern_matches_reference(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, SIMILAR_TO_STEPS)
-        assert reason_outputs["design_pipeline"]["pipeline_pattern"] == "hourly_rollup"
+        assert reason_outputs["build_pipeline"]["design"]["pattern"] == "hourly_rollup"
 
     def test_profiling_warns_on_nulls(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, SIMILAR_TO_STEPS)
@@ -281,8 +247,7 @@ class TestSimilarTo:
 
     def test_validation_passes(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, SIMILAR_TO_STEPS)
-        assert reason_outputs["validate_pipeline"]["compiles"] is True
-        assert reason_outputs["validate_pipeline"]["errors"] == []
+        assert reason_outputs["validate_output"]["overall_status"] == "all_pass"
 
     def test_skips_other_discovery_branches(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, SIMILAR_TO_STEPS)
@@ -301,7 +266,7 @@ class TestSimilarTo:
 
 
 class TestSqlToPipeline:
-    """SQL-to-pipeline path: setup -> classify -> parse_sql -> profile -> reference -> design -> confirm -> generate -> validate -> tests -> show -> PR -> orchestration."""
+    """SQL-to-pipeline path: setup -> classify -> parse_sql -> profile -> gather_reference -> build -> validate -> show -> PR -> orchestration."""
 
     CASSETTE_DIR = Path(__file__).parent / "cassettes" / "create-etl-pipeline-sql-to-pipeline"
     INPUTS = {
@@ -317,7 +282,7 @@ class TestSqlToPipeline:
 
     def test_sql_to_pipeline_step_count(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, SQL_TO_PIPELINE_STEPS)
-        assert len(steps_executed) == 13  # generate_models loops once (1 model)
+        assert len(steps_executed) == 10
 
     def test_classify_returns_sql_to_pipeline(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, SQL_TO_PIPELINE_STEPS)
@@ -329,18 +294,17 @@ class TestSqlToPipeline:
 
     def test_pipeline_pattern_is_standard(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, SQL_TO_PIPELINE_STEPS)
-        assert reason_outputs["design_pipeline"]["pipeline_pattern"] == "standard"
+        assert reason_outputs["build_pipeline"]["design"]["pattern"] == "standard"
 
     def test_design_has_1_model(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, SQL_TO_PIPELINE_STEPS)
-        models = reason_outputs["design_pipeline"]["models"]
+        models = reason_outputs["build_pipeline"]["models"]
         assert len(models) == 1
         assert models[0]["is_new"] is True
 
     def test_validation_passes(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, SQL_TO_PIPELINE_STEPS)
-        assert reason_outputs["validate_pipeline"]["compiles"] is True
-        assert reason_outputs["validate_pipeline"]["errors"] == []
+        assert reason_outputs["validate_output"]["overall_status"] == "all_pass"
 
     def test_skips_other_discovery_branches(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, SQL_TO_PIPELINE_STEPS)
@@ -359,7 +323,7 @@ class TestSqlToPipeline:
 
 
 class TestExtendExisting:
-    """Extend-existing path: setup -> classify -> analyze_target -> profile -> reference -> design -> confirm -> generate(x2) -> validate -> tests -> show -> PR -> orchestration."""
+    """Extend-existing path: setup -> classify -> analyze_target -> profile -> gather_reference -> build -> validate -> show -> PR -> orchestration."""
 
     CASSETTE_DIR = Path(__file__).parent / "cassettes" / "create-etl-pipeline-extend-existing"
     INPUTS = {"request_text": "Add TikTok as a new channel to marketing_spend_day_country_agg"}
@@ -372,7 +336,7 @@ class TestExtendExisting:
 
     def test_extend_existing_step_count(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, EXTEND_EXISTING_STEPS)
-        assert len(steps_executed) == 14  # generate_models loops twice (2 models)
+        assert len(steps_executed) == 10
 
     def test_classify_returns_extend_existing(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, EXTEND_EXISTING_STEPS)
@@ -384,7 +348,7 @@ class TestExtendExisting:
 
     def test_design_has_modification(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, EXTEND_EXISTING_STEPS)
-        models = reason_outputs["design_pipeline"]["models"]
+        models = reason_outputs["build_pipeline"]["models"]
         has_new = any(m["is_new"] for m in models)
         has_modification = any(not m["is_new"] for m in models)
         assert has_new
@@ -392,17 +356,16 @@ class TestExtendExisting:
 
     def test_design_has_2_models(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, EXTEND_EXISTING_STEPS)
-        models = reason_outputs["design_pipeline"]["models"]
+        models = reason_outputs["build_pipeline"]["models"]
         assert len(models) == 2
 
     def test_pipeline_pattern_is_multi_source_union(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, EXTEND_EXISTING_STEPS)
-        assert reason_outputs["design_pipeline"]["pipeline_pattern"] == "multi_source_union"
+        assert reason_outputs["build_pipeline"]["design"]["pattern"] == "multi_source_union"
 
     def test_validation_passes(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS, EXTEND_EXISTING_STEPS)
-        assert reason_outputs["validate_pipeline"]["compiles"] is True
-        assert reason_outputs["validate_pipeline"]["errors"] == []
+        assert reason_outputs["validate_output"]["overall_status"] == "all_pass"
 
     def test_skips_other_discovery_branches(self):
         _, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS, EXTEND_EXISTING_STEPS)

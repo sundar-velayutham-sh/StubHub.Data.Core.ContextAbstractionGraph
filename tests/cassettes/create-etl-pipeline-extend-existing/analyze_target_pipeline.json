@@ -20,6 +20,13 @@
         "pk_candidates": ["CAMPAIGN_ID", "STAT_TIME_DAY"]
       }
     ],
+    "similar_pipelines": [
+      {
+        "model_name": "marketing_spend_day_country_agg",
+        "pattern": "multi_source_union",
+        "relevance": "Target model — existing UNION ALL pattern to extend"
+      }
+    ],
     "existing_models": [
       {
         "name": "marketing_spend_day_country_agg",

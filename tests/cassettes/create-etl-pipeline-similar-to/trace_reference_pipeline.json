@@ -21,6 +21,13 @@
       }
     ],
     "existing_models": [],
+    "similar_pipelines": [
+      {
+        "model_name": "campaign_day_agg",
+        "pattern": "hourly_rollup",
+        "relevance": "Same domain — hourly staging with daily rollup"
+      }
+    ],
     "reference_pipeline": {
       "root_model": "campaign_day_agg",
       "layers": ["source", "staging", "intermediate", "mart"],

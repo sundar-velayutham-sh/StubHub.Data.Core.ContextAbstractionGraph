@@ -1,6 +1,6 @@
 {
   "output": {
-    "reference_examples": [
+    "reference_sql_files": [
       {
         "model_name": "marketing_spend_day_country_agg",
         "layer": "mart",
