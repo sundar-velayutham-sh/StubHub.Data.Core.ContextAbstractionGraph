@@ -142,7 +142,11 @@ class WorkflowLoader:
 
         ctx = raw.get("context", {})
         validation = raw.get("validation", {})
-        structural = validation.get("structural", []) if isinstance(validation, dict) else validation
+        structural = (
+            validation.get("structural", [])
+            if isinstance(validation, dict)
+            else validation
+        )
 
         budget = None
         if "budget" in raw:

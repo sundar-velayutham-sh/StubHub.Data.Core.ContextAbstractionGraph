@@ -8,15 +8,12 @@ the engine walks all steps and produces a correct staging model package
 import json
 from pathlib import Path
 
-import pytest
-
 from dcag import DCAGEngine
 from dcag.types import (
-    ReasonRequest,
     DelegateRequest,
+    ReasonRequest,
     StepSuccess,
 )
-
 
 CONTENT_DIR = Path(__file__).parent.parent / "content"
 

@@ -8,15 +8,13 @@ This test validates the full driver loop:
   engine.start -> next_step -> ShiftDriver.assemble_prompt -> Anthropic API -> record_result
 """
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from dcag import DCAGEngine
 from dcag.drivers.shift import ShiftDriver
-from dcag.types import ReasonRequest, DelegateRequest, StepSuccess
-
+from dcag.types import DelegateRequest, ReasonRequest, StepSuccess
 
 CONTENT_DIR = Path(__file__).parent.parent.parent / "content"
 

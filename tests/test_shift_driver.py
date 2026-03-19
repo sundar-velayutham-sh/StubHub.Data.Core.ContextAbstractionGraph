@@ -5,11 +5,11 @@ and observability event emission — all without real LLM calls.
 """
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 from dcag import DCAGEngine
+from dcag.drivers.shift import ShiftDriver
 from dcag.types import (
     Budget,
     ContextBundle,
@@ -20,8 +20,6 @@ from dcag.types import (
     StepSuccess,
     ToolDirective,
 )
-from dcag.drivers.shift import ShiftDriver
-
 
 CONTENT_DIR = Path(__file__).parent.parent / "content"
 
@@ -342,7 +340,7 @@ class TestEndToEndWithEngine:
                 }
                 run.record_result(request.step_id, StepSuccess(output=dummy_outputs.get(request.step_id, {})))
             elif isinstance(request, DelegateRequest):
-                action = driver.route_delegate(request)
+                driver.route_delegate(request)  # exercise routing
                 run.record_result(request.step_id, StepSuccess(output={"approved": True}))
 
         assert run.status == "completed"

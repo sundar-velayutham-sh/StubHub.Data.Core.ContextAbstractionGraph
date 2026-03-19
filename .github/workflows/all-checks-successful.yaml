@@ -1,0 +1,85 @@
+name: All Checks
+
+on: 
+  status:
+  pull_request:
+
+permissions:
+  checks: read
+  statuses: write
+
+jobs:
+  all-checks:
+    name: Finding status checks
+    runs-on: sh-ubuntu-1x
+    steps:
+      - name: On PR Open
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            function delay(ms) {
+              return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            await delay(15000);
+            const { data } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: "${{ github.event.pull_request.head.sha }}"
+            });
+            console.log(`data.check_runs: ${JSON.stringify(data.check_runs)}`)
+            const failedChecks = data.check_runs.filter(run => ["failure", "cancelled", "timed_out"].includes(run.conclusion) && run.name != "Finding status checks")
+            const pendingChecks = data.check_runs.filter(run => run.status != "completed" && run.name != "Finding status checks")
+            console.log(`failedChecks: ${JSON.stringify(failedChecks)}`)
+            console.log(`pendingChecks: ${JSON.stringify(pendingChecks)}`)
+            let status;
+            if(failedChecks.length > 0){
+              status = "failure"
+            } else if(pendingChecks.length > 0){
+              status = "pending"
+            } else {
+              status = "success"
+            }
+
+            console.log(`status: ${status}`)
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: "${{ github.event.pull_request.head.sha }}",
+              state: status,
+              context: "All Checks / Passing?"
+            })
+
+      - name: On Status Update
+        if: github.event_name == 'status'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            console.log(`Using SHA: ${context.payload.sha}`)
+            const { data } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.sha
+            });
+            console.log(`data.check_runs: ${JSON.stringify(data.check_runs)}`)
+            const failedChecks = data.check_runs.filter(run => ["failure", "cancelled", "timed_out"].includes(run.conclusion) && run.name != "Finding status checks")
+            const pendingChecks = data.check_runs.filter(run => run.status != "completed" && run.name != "Finding status checks")
+            console.log(`failedChecks: ${JSON.stringify(failedChecks)}`)
+            console.log(`pendingChecks: ${JSON.stringify(pendingChecks)}`)
+            let status;
+            if(failedChecks.length > 0){
+              status = "failure"
+            } else if(pendingChecks.length > 0){
+              status = "pending"
+            } else {
+              status = "success"
+            }
+
+            console.log(`status: ${status}`)
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.sha,
+              state: status,
+              context: "All Checks / Passing?"
+            })

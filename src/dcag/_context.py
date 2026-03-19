@@ -22,7 +22,12 @@ logger = logging.getLogger(__name__)
 class ContextAssembler:
     """Assembles context for each step: static + dynamic + persona merge."""
 
-    def __init__(self, persona_loader: PersonaLoader, knowledge_loader: KnowledgeLoader, registry: ToolRegistry | None = None):
+    def __init__(
+        self,
+        persona_loader: PersonaLoader,
+        knowledge_loader: KnowledgeLoader,
+        registry: ToolRegistry | None = None,
+    ):
         self._personas = persona_loader
         self._knowledge = knowledge_loader
         self._registry = registry
@@ -31,7 +36,9 @@ class ContextAssembler:
         """Load static knowledge files."""
         return self._knowledge.load_multiple(static_refs) if static_refs else {}
 
-    def build_dynamic(self, dynamic_refs: list[dict | str], prior_outputs: dict[str, Any]) -> dict[str, Any]:
+    def build_dynamic(
+        self, dynamic_refs: list[dict | str], prior_outputs: dict[str, Any]
+    ) -> dict[str, Any]:
         """Resolve dynamic context from prior step outputs."""
         result: dict[str, Any] = {}
         for ref in dynamic_refs:
@@ -40,7 +47,8 @@ class ContextAssembler:
                 if step_id not in prior_outputs:
                     # Skip refs from steps that didn't execute (e.g. conditional branches)
                     logger.debug(
-                        f"Dynamic ref '{step_id}' not in prior outputs (branch not taken), skipping. "
+                        f"Dynamic ref '{step_id}' not in prior outputs "
+                        f"(branch not taken), skipping. "
                         f"Available: {list(prior_outputs.keys())}"
                     )
                     continue
@@ -61,7 +69,10 @@ class ContextAssembler:
                     result[step_id] = output
             elif isinstance(ref, str):
                 if ref not in prior_outputs:
-                    logger.debug(f"Dynamic ref '{ref}' not in prior outputs (branch not taken), skipping")
+                    logger.debug(
+                        f"Dynamic ref '{ref}' not in prior outputs "
+                        "(branch not taken), skipping"
+                    )
                     continue
                 result[ref] = prior_outputs[ref]
         return result
@@ -144,7 +155,11 @@ class ContextAssembler:
             dynamic.update(decisions)
 
         # Filter tools through registry if available
-        available_tools = self._registry.resolve_available(step.tools) if self._registry else step.tools
+        available_tools = (
+            self._registry.resolve_available(step.tools)
+            if self._registry
+            else step.tools
+        )
 
         # Estimate tokens
         total_tokens = (

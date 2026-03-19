@@ -6,7 +6,6 @@ from typing import Any
 
 from dcag.types import ToolDirective
 
-
 # Default tool requirements — which capabilities each tool needs
 DEFAULT_TOOL_REQUIREMENTS: dict[str, list[str]] = {
     "dbt_mcp.compile": ["dbt_available", "dbt_mcp_available"],

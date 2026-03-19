@@ -1,0 +1,53 @@
+name: Lint/Test - Python
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - main
+
+permissions:
+  pull-requests: read
+  contents: read
+
+jobs:
+  lint_python:
+    name: Lint Python
+    runs-on: sh-ubuntu-1x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src/ tests/
+
+  test_python:
+    name: Test Python
+    runs-on: sh-ubuntu-2x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest --cov=dcag --cov-report=term-missing --cov-fail-under=85
+        env:
+          DCAG_API_USER: test-user
+          DCAG_API_PASS: test-pass

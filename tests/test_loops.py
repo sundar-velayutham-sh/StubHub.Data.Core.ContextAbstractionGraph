@@ -1,5 +1,4 @@
 """Tests for step loop functionality."""
-import pytest
 from dcag._walker import Walker
 from dcag.types import StepDef, ToolDirective
 

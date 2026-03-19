@@ -1,5 +1,6 @@
 """Tests for DAG walker."""
 import pytest
+
 from dcag._walker import Walker
 from dcag.types import StepDef, ToolDirective
 

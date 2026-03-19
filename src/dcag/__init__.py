@@ -9,8 +9,8 @@ Types: dcag.types
 """
 from dcag._decisions import DecisionStore
 from dcag._evaluator import evaluate
-from dcag.engine import DCAGEngine, WorkflowRun
 from dcag.drivers.shift import ShiftDriver
+from dcag.engine import DCAGEngine, WorkflowRun
 from dcag.types import (
     Budget,
     ContextBundle,

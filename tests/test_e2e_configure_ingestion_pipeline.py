@@ -9,15 +9,12 @@ Test scenario: Configure ingestion for PARTNER_COMMISSION from ECOMM SQL Server.
 import json
 from pathlib import Path
 
-import pytest
-
 from dcag import DCAGEngine
 from dcag.types import (
-    ReasonRequest,
     DelegateRequest,
+    ReasonRequest,
     StepSuccess,
 )
-
 
 CONTENT_DIR = Path(__file__).parent.parent / "content"
 CASSETTE_DIR = Path(__file__).parent / "cassettes" / "configure-ingestion-pipeline"
