@@ -1,26 +1,34 @@
 """
 End-to-end test for the add-dbt-tests workflow.
 
-Tests the full 5-step workflow with cassette responses, verifying
+Tests the full 7-step workflow with cassette responses, verifying
 the engine walks all steps and produces correct test additions.
 """
 import json
 from pathlib import Path
 
-import pytest
-
 from dcag import DCAGEngine
 from dcag.types import (
-    ReasonRequest,
     DelegateRequest,
+    ReasonRequest,
     StepSuccess,
 )
 
-
 CONTENT_DIR = Path(__file__).parent.parent / "content"
 
-# All 5 steps in execution order
+# All 7 steps in execution order
 EXPECTED_STEPS = [
+    "resolve_model",
+    "get_column_metadata",
+    "infer_tests",
+    "update_schema_yml",
+    "validate",
+    "show_plan",
+    "create_pr",
+]
+
+# Only the REASON steps (first 5) have cassettes
+REASON_STEPS = [
     "resolve_model",
     "get_column_metadata",
     "infer_tests",
@@ -28,12 +36,9 @@ EXPECTED_STEPS = [
     "validate",
 ]
 
-# All 5 steps are REASON (no DELEGATE in this workflow)
-REASON_STEPS = EXPECTED_STEPS
-
 
 def load_cassettes(cassette_dir: Path) -> dict[str, dict]:
-    """Load all 5 cassettes for the add-dbt-tests test."""
+    """Load reason step cassettes for the add-dbt-tests test."""
     cassettes = {}
     for step_id in REASON_STEPS:
         path = cassette_dir / f"{step_id}.json"
@@ -84,10 +89,10 @@ class TestAddDbtTests:
     GOLDEN_DIR = Path(__file__).parent / "goldens" / "add-dbt-tests"
     INPUTS = {"model_name": "dim_venue"}
 
-    def test_workflow_completes_5_steps(self):
+    def test_workflow_completes_7_steps(self):
         run, steps_executed, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS)
         assert run.status == "completed"
-        assert len(steps_executed) == 5
+        assert len(steps_executed) == 7
         assert steps_executed == EXPECTED_STEPS
 
     def test_existing_tests_detected(self):
@@ -135,7 +140,7 @@ class TestAddDbtTests:
     def test_nullable_columns_skipped(self):
         _, _, reason_outputs = run_workflow(self.CASSETTE_DIR, self.INPUTS)
         new_tests = reason_outputs["infer_tests"]["new_tests"]
-        tested_cols = [t["column"] for t in new_tests]
+        _tested_cols = [t["column"] for t in new_tests]  # noqa: F841
         # Nullable columns should NOT get not_null
         not_null_cols = [t["column"] for t in new_tests if t["test_type"] == "not_null"]
         assert "state" not in not_null_cols
@@ -172,12 +177,12 @@ class TestAddDbtTests:
         av_cols = [t["column"] for t in infer["new_tests"] if t["test_type"] == "accepted_values"]
         assert set(av_cols) == set(golden["columns_with_accepted_values"])
 
-    def test_trace_has_all_5_steps(self):
+    def test_trace_has_all_7_steps(self):
         run, _, _ = run_workflow(self.CASSETTE_DIR, self.INPUTS)
         trace = run.get_trace()
         assert trace["workflow_id"] == "add-dbt-tests"
         assert trace["status"] == "completed"
-        assert len(trace["steps"]) == 5
+        assert len(trace["steps"]) == 7
 
     def test_reason_request_has_persona_and_tools(self):
         engine = DCAGEngine(content_dir=CONTENT_DIR)

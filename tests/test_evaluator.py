@@ -1,5 +1,4 @@
 """Tests for the expression evaluator."""
-import pytest
 from dcag._evaluator import evaluate
 
 

@@ -4,15 +4,15 @@ Validates context assembly per step WITHOUT LLM, using .test.yml spec.
 Tests the new_source path through conditional branching.
 """
 import json
-import yaml
 from pathlib import Path
 
 import pytest
+import yaml
 
 from dcag import DCAGEngine
 from dcag.types import (
-    ReasonRequest,
     DelegateRequest,
+    ReasonRequest,
     StepSuccess,
 )
 

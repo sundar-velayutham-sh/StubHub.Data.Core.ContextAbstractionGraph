@@ -1,10 +1,8 @@
 """Tests for decision trace persistence."""
 import json
-import tempfile
-from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
+
 from dcag._decisions import DecisionStore
 
 

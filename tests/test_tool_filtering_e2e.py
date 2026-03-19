@@ -1,8 +1,6 @@
 """E2E test: add-column-to-model in degraded mode filters unavailable tools."""
 from pathlib import Path
 
-import pytest
-
 from dcag import DCAGEngine
 from dcag.types import (
     DelegateRequest,

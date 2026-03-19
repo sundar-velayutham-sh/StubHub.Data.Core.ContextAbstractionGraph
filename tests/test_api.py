@@ -8,11 +8,12 @@ Uses FastAPI's TestClient to verify the step-at-a-time enforcement:
 - Error cases: 404 unknown run, 409 wrong step_id
 """
 import os
+
 os.environ.setdefault("DCAG_API_USER", "test-user")
 os.environ.setdefault("DCAG_API_PASS", "test-pass")
 
 import base64
-import pytest
+
 from starlette.testclient import TestClient
 
 from dcag.api import app

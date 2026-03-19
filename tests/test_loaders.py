@@ -1,8 +1,10 @@
 """Tests for YAML loaders."""
 from pathlib import Path
+
 import pytest
-from dcag._loaders import PersonaLoader, KnowledgeLoader, WorkflowLoader
-from dcag.types import PersonaBundle, WorkflowDef, ManifestEntry
+
+from dcag._loaders import KnowledgeLoader, PersonaLoader, WorkflowLoader
+from dcag.types import ManifestEntry, PersonaBundle, WorkflowDef
 
 CONTENT_DIR = Path(__file__).parent.parent / "content"
 

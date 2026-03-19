@@ -4,15 +4,16 @@ Reads .test.yml alongside the workflow YAML, walks the workflow using the
 real assembler + loaders, and asserts each step's ContextSnapshot matches
 the conformance contract.
 """
-import yaml
 from pathlib import Path
+
 import pytest
+import yaml
 
 from dcag import DCAGEngine
 from dcag.types import (
-    ReasonRequest,
-    ExecuteScriptRequest,
     DelegateRequest,
+    ExecuteScriptRequest,
+    ReasonRequest,
     StepSuccess,
 )
 

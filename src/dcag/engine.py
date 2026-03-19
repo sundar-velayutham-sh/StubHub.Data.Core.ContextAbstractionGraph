@@ -18,11 +18,8 @@ from dcag._walker import Walker
 from dcag.types import (
     DelegateRequest,
     ExecuteScriptRequest,
-    ExecuteTemplateRequest,
     ManifestEntry,
     PersonaBundle,
-    ReasonRequest,
-    StepDef,
     StepFailure,
     StepOutcome,
     StepRequest,
@@ -169,9 +166,17 @@ class WorkflowRun:
                             output = self._prior_outputs[step_id]
                             if isinstance(sel, list):
                                 for field in sel:
-                                    delegate_inputs[field] = output[field] if isinstance(output, dict) else output
+                                    delegate_inputs[field] = (
+                                        output[field]
+                                        if isinstance(output, dict)
+                                        else output
+                                    )
                             else:
-                                delegate_inputs[sel] = output[sel] if isinstance(output, dict) else output
+                                delegate_inputs[sel] = (
+                                    output[sel]
+                                    if isinstance(output, dict)
+                                    else output
+                                )
                         else:
                             delegate_inputs[step_id] = self._prior_outputs[step_id]
 
@@ -215,8 +220,15 @@ class WorkflowRun:
 
             # Auto-populate ToolRegistry from any execute/script step
             # that reports capability fields
-            if step.mode == "execute" and step.execute_type == "script" and isinstance(outcome.output, dict):
-                capability_keys = {"dbt_available", "dbt_mcp_available", "github_available", "fallback_mode"}
+            if (
+                step.mode == "execute"
+                and step.execute_type == "script"
+                and isinstance(outcome.output, dict)
+            ):
+                capability_keys = {
+                    "dbt_available", "dbt_mcp_available",
+                    "github_available", "fallback_mode",
+                }
                 if capability_keys & outcome.output.keys():
                     self._registry.update_capabilities(outcome.output)
 

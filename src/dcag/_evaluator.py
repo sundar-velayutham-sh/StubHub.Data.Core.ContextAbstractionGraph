@@ -9,7 +9,6 @@ import ast
 import re
 from typing import Any
 
-
 # Pattern: "path.to.field <op> <value>"
 _EXPR_RE = re.compile(
     r"^([\w.]+)\s+(==|!=|>|<|in)\s+(.+)$"

@@ -2,19 +2,16 @@
 from dcag.types import (
     Budget,
     ContextBundle,
-    DecisionLog,
     DelegateRequest,
     ExecuteTemplateRequest,
     ManifestEntry,
     PersonaBundle,
     ReasonRequest,
-    StepDef,
     StepFailure,
     StepSkipped,
     StepSuccess,
     ToolDirective,
     Trace,
-    TraceStep,
     WorkflowDef,
 )
 

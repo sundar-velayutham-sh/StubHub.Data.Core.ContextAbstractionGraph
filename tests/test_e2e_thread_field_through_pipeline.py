@@ -9,15 +9,12 @@ Test scenario: Thread VENUE_CAPACITY through stg_venues -> int_venues_enriched -
 import json
 from pathlib import Path
 
-import pytest
-
 from dcag import DCAGEngine
 from dcag.types import (
-    ReasonRequest,
     DelegateRequest,
+    ReasonRequest,
     StepSuccess,
 )
-
 
 CONTENT_DIR = Path(__file__).parent.parent / "content"
 CASSETTE_DIR = Path(__file__).parent / "cassettes" / "thread-field-through-pipeline"

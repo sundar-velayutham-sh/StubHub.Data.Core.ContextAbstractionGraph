@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -84,7 +84,7 @@ class TraceWriter:
             f.write(json.dumps(event, default=str) + "\n")
 
     def _now(self) -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
 
 class ObservabilityEvent:
@@ -96,24 +96,52 @@ class ObservabilityEvent:
 
     @staticmethod
     def context_assembled(step_id: str, snapshot: ContextSnapshot) -> dict:
-        return {"type": "context_assembled", "step_id": step_id, "snapshot": asdict(snapshot), "timestamp": _now()}
+        return {
+            "type": "context_assembled",
+            "step_id": step_id,
+            "snapshot": asdict(snapshot),
+            "timestamp": _now(),
+        }
 
     @staticmethod
     def tool_resolved(step_id: str, requested: list[str], available: list[str]) -> dict:
-        return {"type": "tool_resolved", "step_id": step_id, "requested": requested, "available": available, "timestamp": _now()}
+        return {
+            "type": "tool_resolved",
+            "step_id": step_id,
+            "requested": requested,
+            "available": available,
+            "timestamp": _now(),
+        }
 
     @staticmethod
     def request_returned(step_id: str, request_type: str) -> dict:
-        return {"type": "request_returned", "step_id": step_id, "request_type": request_type, "timestamp": _now()}
+        return {
+            "type": "request_returned",
+            "step_id": step_id,
+            "request_type": request_type,
+            "timestamp": _now(),
+        }
 
     @staticmethod
     def result_recorded(step_id: str, status: str, duration_ms: int) -> dict:
-        return {"type": "result_recorded", "step_id": step_id, "status": status, "duration_ms": duration_ms, "timestamp": _now()}
+        return {
+            "type": "result_recorded",
+            "step_id": step_id,
+            "status": status,
+            "duration_ms": duration_ms,
+            "timestamp": _now(),
+        }
 
     @staticmethod
     def workflow_complete(run_id: str, steps_executed: int, total_ms: int) -> dict:
-        return {"type": "workflow_complete", "run_id": run_id, "steps_executed": steps_executed, "total_ms": total_ms, "timestamp": _now()}
+        return {
+            "type": "workflow_complete",
+            "run_id": run_id,
+            "steps_executed": steps_executed,
+            "total_ms": total_ms,
+            "timestamp": _now(),
+        }
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()

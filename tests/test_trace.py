@@ -2,6 +2,7 @@
 import json
 import tempfile
 from pathlib import Path
+
 from dcag._trace import TraceWriter
 
 

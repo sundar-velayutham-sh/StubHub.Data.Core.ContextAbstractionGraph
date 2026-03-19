@@ -91,7 +91,9 @@ class SubmitResultRequest(BaseModel):
 
 # ── Serialisation helpers ─────────────────────────────────
 
-def _serialize_step(request: ReasonRequest | ExecuteTemplateRequest | DelegateRequest | ExecuteScriptRequest) -> dict[str, Any]:
+def _serialize_step(
+    request: ReasonRequest | ExecuteTemplateRequest | DelegateRequest | ExecuteScriptRequest,
+) -> dict[str, Any]:
     """Serialize a typed StepRequest into a JSON-safe dict."""
     if isinstance(request, ReasonRequest):
         return {
@@ -198,7 +200,9 @@ def start_run(body: StartRequest, user: str = Depends(verify_auth)) -> dict[str,
 
 
 @app.post("/api/v1/runs/{run_id}/results")
-def submit_result(run_id: str, body: SubmitResultRequest, user: str = Depends(verify_auth)) -> dict[str, Any]:
+def submit_result(
+    run_id: str, body: SubmitResultRequest, user: str = Depends(verify_auth)
+) -> dict[str, Any]:
     """Submit a step result and get the next step (or completed status)."""
     run = _runs.get(run_id)
     if run is None:

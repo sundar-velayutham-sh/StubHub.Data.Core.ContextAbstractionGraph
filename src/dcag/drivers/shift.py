@@ -10,12 +10,11 @@ concrete LLM + MCP capabilities. It handles:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from dcag._snapshot import ContextSnapshot
 from dcag.types import DelegateRequest, ReasonRequest
-
 
 # Supported delegate capabilities
 _DELEGATE_CAPABILITIES = {"shift.show_plan", "shift.create_pr"}
@@ -205,4 +204,4 @@ class ShiftDriver:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
