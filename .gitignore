@@ -9,3 +9,8 @@ build/
 .mypy_cache/
 .venv/
 venv/
+.superpowers/
+.env
+.env.local
+.env.*
+!.env.example
